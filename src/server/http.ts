@@ -1,6 +1,6 @@
-import type { z } from "zod";
+import { z } from "zod";
 import type { ApiError, ApiErrorBody, ErrorKind } from "@/shared/api/errors";
-import { fail, ok, type Result } from "./result";
+import { fail, notFound, ok, type Result } from "./result";
 
 // Übersetzt Service-Ergebnisse in HTTP-Antworten für die Route Handlers.
 
@@ -44,4 +44,11 @@ export async function parseBody<S extends z.ZodType>(
     return fail({ kind: "invalid", code: "invalid_json", message: "Anfrage enthält kein gültiges JSON" });
   }
   return validate(schema, body);
+}
+
+const uuid = z.uuid();
+
+/** Pfad-IDs sind UUIDs; alles andere kann es nicht geben und ist daher 404, nicht 400. */
+export function parseId(id: string, what: string): Result<string> {
+  return uuid.safeParse(id).success ? ok(id) : notFound(what);
 }

@@ -394,6 +394,10 @@ Anmerkungen:
   Migration `drizzle/0001_…`, weil Drizzle das im Schema nicht ausdrücken
   kann). Ein noch verwendetes Element bleibt trotzdem unlöschbar.
 - Tabellennamen stehen immer im Plural.
+- Zeitstempel haben Millisekunden-Genauigkeit (`timestamp(3)`), passend zu
+  JavaScript-Dates – sonst würde der Überschreib-Schutz über `updatedAt` nie
+  greifen. Änderungen setzen `updated_at = clock_timestamp()`, weil `now()`
+  innerhalb einer Transaktion konstant ist.
 - Die Platzierung eines Elements steht in `cell_elements`, nicht im Element:
   Elemente sind zwischen Versionen geteilt, Rows und Zellen nicht. Ein
   `cell_id` am Element würde jeden Fork zum Klonen aller Elemente zwingen.
@@ -446,9 +450,9 @@ Alle Antworten sind JSON. Fehler haben immer die Form
 
 | Methode | Pfad | Zweck |
 | --- | --- | --- |
-| `GET` | `/tags` | Liste mit Anzahl der Posts, deren veröffentlichte Version den Tag nutzt |
+| `GET` | `/tags` | Liste, deutsch sortiert, mit `postCount` (Posts, in denen irgendeine Version den Tag nutzt) und `publishedPostCount` (Posts, deren veröffentlichte Version ihn nutzt) |
 | `POST` | `/tags` | Anlegen `{ name }`, Slug wird erzeugt |
-| `PATCH` | `/tags/:id` | Umbenennen `{ name?, slug?, updatedAt }` |
+| `PATCH` | `/tags/:id` | Umbenennen `{ name?, slug?, updatedAt }`; der Slug bleibt beim Umbenennen erhalten und ändert sich nur ausdrücklich |
 | `DELETE` | `/tags/:id` | Löschen |
 | `POST` | `/media/uploads` | Upload vorbereiten `{ filename, mimeType, size }` → `{ uploadUrl, key }` |
 | `POST` | `/media` | Upload bestätigen `{ key, filename, width, height, alt }` |

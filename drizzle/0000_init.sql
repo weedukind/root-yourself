@@ -26,8 +26,8 @@ CREATE TABLE "elements" (
 	"type" text NOT NULL,
 	"data" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"media_id" uuid,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp (3) with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp (3) with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "elements_post_id_unique" UNIQUE("post_id","id"),
 	CONSTRAINT "elements_media_check" CHECK (("elements"."type" = 'image') = ("elements"."media_id" IS NOT NULL))
 );
@@ -41,24 +41,24 @@ CREATE TABLE "media" (
 	"width" integer NOT NULL,
 	"height" integer NOT NULL,
 	"alt" text DEFAULT '' NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp (3) with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp (3) with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "media_r2_key_unique" UNIQUE("r2_key")
 );
 --> statement-breakpoint
 CREATE TABLE "post_slug_redirects" (
 	"old_slug" text PRIMARY KEY NOT NULL,
 	"post_id" uuid NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp (3) with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "posts" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"slug" text NOT NULL,
 	"published_version_id" uuid,
-	"first_published_at" timestamp with time zone,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"first_published_at" timestamp (3) with time zone,
+	"created_at" timestamp (3) with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp (3) with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "posts_slug_unique" UNIQUE("slug"),
 	CONSTRAINT "posts_first_published_at_check" CHECK ("posts"."published_version_id" IS NULL OR "posts"."first_published_at" IS NOT NULL)
 );
@@ -78,8 +78,8 @@ CREATE TABLE "tags" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"name" text NOT NULL,
 	"slug" text NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp (3) with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp (3) with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "tags_name_unique" UNIQUE("name"),
 	CONSTRAINT "tags_slug_unique" UNIQUE("slug")
 );
@@ -96,9 +96,9 @@ CREATE TABLE "versions" (
 	"number" integer NOT NULL,
 	"parent_version_id" uuid,
 	"title" text NOT NULL,
-	"published_at" timestamp with time zone,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"published_at" timestamp (3) with time zone,
+	"created_at" timestamp (3) with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp (3) with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "versions_post_number_unique" UNIQUE("post_id","number"),
 	CONSTRAINT "versions_post_id_unique" UNIQUE("post_id","id"),
 	CONSTRAINT "versions_parent_check" CHECK ("versions"."parent_version_id" <> "versions"."id")

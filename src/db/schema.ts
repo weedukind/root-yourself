@@ -15,12 +15,17 @@ import {
 } from "drizzle-orm/pg-core";
 
 // Siehe docs/concept.md für das Datenmodell, die Versionsregeln und das Seitenlayout.
-// FKs ohne onDelete sind NO ACTION: Postgres prüft sie erst am Ende der Anweisung,
-// dadurch funktioniert das kaskadierende Löschen eines ganzen Posts.
+// FKs ohne onDelete sind NO ACTION. Postgres prüft sie am Ende jeder einzelnen Kaskade;
+// cell_elements_element_fk ist deshalb aufgeschoben (drizzle/0001_…), sonst scheitert das
+// Löschen eines Posts mit Elementen.
+
+// Millisekunden statt Mikrosekunden: JavaScript-Dates kennen nur Millisekunden. Sonst würde ein
+// zurückgeschicktes updatedAt (Überschreib-Schutz) nie exakt dem gespeicherten Wert entsprechen.
+const TIMESTAMP = { withTimezone: true, precision: 3 } as const;
 
 const timestamps = {
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", TIMESTAMP).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", TIMESTAMP).notNull().defaultNow(),
 };
 
 export const tags = pgTable("tags", {
@@ -48,7 +53,7 @@ export const posts = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     slug: text("slug").notNull().unique(),
     publishedVersionId: uuid("published_version_id"),
-    firstPublishedAt: timestamp("first_published_at", { withTimezone: true }),
+    firstPublishedAt: timestamp("first_published_at", TIMESTAMP),
     ...timestamps,
   },
   (t) => [
@@ -78,7 +83,7 @@ export const versions = pgTable(
     number: integer("number").notNull(),
     parentVersionId: uuid("parent_version_id"),
     title: text("title").notNull(),
-    publishedAt: timestamp("published_at", { withTimezone: true }),
+    publishedAt: timestamp("published_at", TIMESTAMP),
     ...timestamps,
   },
   (t) => [
@@ -209,5 +214,5 @@ export const postSlugRedirects = pgTable("post_slug_redirects", {
   postId: uuid("post_id")
     .notNull()
     .references(() => posts.id, { onDelete: "cascade" }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", TIMESTAMP).notNull().defaultNow(),
 });
