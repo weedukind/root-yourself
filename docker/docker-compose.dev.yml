@@ -1,0 +1,41 @@
+name: rootyourself
+
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "3002:3000"
+    volumes:
+      - ..:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - WATCHPACK_POLLING=true
+      # Hat Vorrang vor .env.local (dort steht die Host-Adresse localhost:5433 für drizzle-kit).
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/rootyourself
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Lokale Entwicklungsdatenbank, gleiche Postgres-Version wie Neon.
+  db:
+    image: postgres:18-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=rootyourself
+    volumes:
+      # Ab Postgres 18 liegt PGDATA unterhalb von /var/lib/postgresql/<version>.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d rootyourself"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+volumes:
+  pgdata:
