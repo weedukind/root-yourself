@@ -1,10 +1,11 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
-  pgEnum,
   pgTable,
   primaryKey,
   text,
@@ -13,14 +14,14 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-// Siehe docs/concept.md für Regeln und Hintergründe.
+// Siehe docs/concept.md für das Datenmodell, die Versionsregeln und das Seitenlayout.
+// FKs ohne onDelete sind NO ACTION: Postgres prüft sie erst am Ende der Anweisung,
+// dadurch funktioniert das kaskadierende Löschen eines ganzen Posts.
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 };
-
-export const postStatus = pgEnum("post_status", ["draft", "published"]);
 
 export const tags = pgTable("tags", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -46,49 +47,160 @@ export const posts = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     slug: text("slug").notNull().unique(),
-    title: text("title").notNull(),
-    status: postStatus("status").notNull().default("draft"),
+    publishedVersionId: uuid("published_version_id"),
+    firstPublishedAt: timestamp("first_published_at", { withTimezone: true }),
     ...timestamps,
-    publishedAt: timestamp("published_at", { withTimezone: true }),
   },
   (t) => [
-    check("posts_published_at_check", sql`${t.status} = 'draft' OR ${t.publishedAt} IS NOT NULL`),
+    check(
+      "posts_first_published_at_check",
+      sql`${t.publishedVersionId} IS NULL OR ${t.firstPublishedAt} IS NOT NULL`,
+    ),
+    // Die veröffentlichte Version muss zu diesem Post gehören.
+    foreignKey({
+      name: "posts_published_version_fk",
+      columns: [t.id, t.publishedVersionId],
+      foreignColumns: [versions.postId, versions.id],
+    }),
     index("posts_feed_idx")
-      .on(t.publishedAt.desc(), t.id.desc())
-      .where(sql`${t.status} = 'published'`),
+      .on(t.firstPublishedAt.desc(), t.id.desc())
+      .where(sql`${t.publishedVersionId} IS NOT NULL`),
   ],
 );
 
-export const postTags = pgTable(
-  "post_tags",
-  {
-    postId: uuid("post_id")
-      .notNull()
-      .references(() => posts.id, { onDelete: "cascade" }),
-    tagId: uuid("tag_id")
-      .notNull()
-      .references(() => tags.id, { onDelete: "cascade" }),
-  },
-  (t) => [primaryKey({ columns: [t.postId, t.tagId] }), index("post_tags_tag_idx").on(t.tagId)],
-);
-
-export const postElements = pgTable(
-  "post_elements",
+export const versions = pgTable(
+  "versions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     postId: uuid("post_id")
       .notNull()
+      .references((): AnyPgColumn => posts.id, { onDelete: "cascade" }),
+    number: integer("number").notNull(),
+    parentVersionId: uuid("parent_version_id"),
+    title: text("title").notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    unique("versions_post_number_unique").on(t.postId, t.number),
+    unique("versions_post_id_unique").on(t.postId, t.id),
+    check("versions_parent_check", sql`${t.parentVersionId} <> ${t.id}`),
+    // Die Elternversion muss zum selben Post gehören.
+    foreignKey({
+      name: "versions_parent_fk",
+      columns: [t.postId, t.parentVersionId],
+      foreignColumns: [t.postId, t.id],
+    }),
+    index("versions_parent_idx").on(t.parentVersionId),
+  ],
+);
+
+export const versionTags = pgTable(
+  "version_tags",
+  {
+    versionId: uuid("version_id")
+      .notNull()
+      .references(() => versions.id, { onDelete: "cascade" }),
+    tagId: uuid("tag_id")
+      .notNull()
+      .references(() => tags.id, { onDelete: "cascade" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.versionId, t.tagId] }),
+    index("version_tags_tag_idx").on(t.tagId),
+  ],
+);
+
+export const elements = pgTable(
+  "elements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Kein fachlicher Besitz – nur Integrität: Versionen verlinken nur Elemente ihres Posts.
+    postId: uuid("post_id")
+      .notNull()
       .references(() => posts.id, { onDelete: "cascade" }),
-    position: integer("position").notNull(),
     type: text("type").notNull(),
     data: jsonb("data").notNull().default({}),
     mediaId: uuid("media_id").references(() => media.id, { onDelete: "restrict" }),
+    ...timestamps,
   },
   (t) => [
-    unique("post_elements_post_position_unique").on(t.postId, t.position),
-    check("post_elements_media_check", sql`(${t.type} = 'image') = (${t.mediaId} IS NOT NULL)`),
-    index("post_elements_media_idx").on(t.mediaId),
-    index("post_elements_type_idx").on(t.postId, t.type, t.position),
+    unique("elements_post_id_unique").on(t.postId, t.id),
+    check("elements_media_check", sql`(${t.type} = 'image') = (${t.mediaId} IS NOT NULL)`),
+    index("elements_media_idx").on(t.mediaId),
+  ],
+);
+
+export const rows = pgTable(
+  "rows",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    versionId: uuid("version_id")
+      .notNull()
+      .references(() => versions.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    gridWidth: integer("grid_width").notNull(),
+    gridHeight: integer("grid_height").notNull(),
+  },
+  (t) => [
+    unique("rows_version_position_unique").on(t.versionId, t.position),
+    unique("rows_version_id_unique").on(t.versionId, t.id),
+    check("rows_grid_check", sql`${t.gridWidth} > 0 AND ${t.gridHeight} > 0`),
+  ],
+);
+
+export const cells = pgTable(
+  "cells",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    versionId: uuid("version_id").notNull(),
+    rowId: uuid("row_id").notNull(),
+    position: integer("position").notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+  },
+  (t) => [
+    unique("cells_row_position_unique").on(t.rowId, t.position),
+    unique("cells_version_id_unique").on(t.versionId, t.id),
+    check("cells_size_check", sql`${t.width} > 0 AND ${t.height} > 0`),
+    // Die Zelle gehört zu einer Row derselben Version.
+    foreignKey({
+      name: "cells_row_fk",
+      columns: [t.versionId, t.rowId],
+      foreignColumns: [rows.versionId, rows.id],
+    }).onDelete("cascade"),
+  ],
+);
+
+export const cellElements = pgTable(
+  "cell_elements",
+  {
+    cellId: uuid("cell_id").notNull(),
+    versionId: uuid("version_id").notNull(),
+    postId: uuid("post_id").notNull(),
+    position: integer("position").notNull(),
+    elementId: uuid("element_id").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.cellId, t.position] }),
+    // Jedes Element höchstens einmal pro Version.
+    unique("cell_elements_version_element_unique").on(t.versionId, t.elementId),
+    foreignKey({
+      name: "cell_elements_cell_fk",
+      columns: [t.versionId, t.cellId],
+      foreignColumns: [cells.versionId, cells.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "cell_elements_version_fk",
+      columns: [t.postId, t.versionId],
+      foreignColumns: [versions.postId, versions.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "cell_elements_element_fk",
+      columns: [t.postId, t.elementId],
+      foreignColumns: [elements.postId, elements.id],
+    }),
+    index("cell_elements_element_idx").on(t.elementId),
   ],
 );
 

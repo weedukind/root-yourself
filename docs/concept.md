@@ -386,9 +386,13 @@ Anmerkungen:
 - `posts` und `versions` verweisen gegenseitig aufeinander; in der Migration
   wird der FK `posts → versions` nach beiden Tabellen per `ALTER TABLE`
   ergänzt.
-- FKs ohne `ON DELETE` sind `NO ACTION`: Postgres prüft sie erst am Ende der
-  Anweisung. Dadurch funktioniert das Löschen eines Posts, bei dem Versionen,
-  Verknüpfungen und Elemente in einer Anweisung per Kaskade verschwinden.
+- FKs ohne `ON DELETE` sind `NO ACTION`. Achtung: Postgres prüft sie am Ende
+  jeder einzelnen Kaskade, nicht der ganzen Anweisung. Beim Löschen eines Posts
+  entfernt eine Kaskade die Elemente, eine andere (über die Versionen) erst
+  danach deren Verknüpfungen. Deshalb ist `cell_elements → elements`
+  `DEFERRABLE INITIALLY DEFERRED` und wird erst beim Commit geprüft (eigene
+  Migration `drizzle/0001_…`, weil Drizzle das im Schema nicht ausdrücken
+  kann). Ein noch verwendetes Element bleibt trotzdem unlöschbar.
 - Tabellennamen stehen immer im Plural.
 - Die Platzierung eines Elements steht in `cell_elements`, nicht im Element:
   Elemente sind zwischen Versionen geteilt, Rows und Zellen nicht. Ein

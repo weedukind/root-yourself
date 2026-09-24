@@ -1,6 +1,6 @@
 {
-  "id": "58abf421-13a4-4f97-83c9-28c345781f0d",
-  "prevId": "00000000-0000-0000-0000-000000000000",
+  "id": "2fd5dfc6-693d-4993-83ad-09fe145f538e",
+  "prevId": "58abf421-13a4-4f97-83c9-28c345781f0d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -51,56 +51,56 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "cell_elements_cell_fk": {
           "name": "cell_elements_cell_fk",
           "tableFrom": "cell_elements",
-          "tableTo": "cells",
           "columnsFrom": [
             "version_id",
             "cell_id"
           ],
+          "tableTo": "cells",
           "columnsTo": [
             "version_id",
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "cell_elements_version_fk": {
           "name": "cell_elements_version_fk",
           "tableFrom": "cell_elements",
-          "tableTo": "versions",
           "columnsFrom": [
             "post_id",
             "version_id"
           ],
+          "tableTo": "versions",
           "columnsTo": [
             "post_id",
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "cell_elements_element_fk": {
           "name": "cell_elements_element_fk",
           "tableFrom": "cell_elements",
-          "tableTo": "elements",
           "columnsFrom": [
             "post_id",
             "element_id"
           ],
+          "tableTo": "elements",
           "columnsTo": [
             "post_id",
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -115,11 +115,11 @@
       "uniqueConstraints": {
         "cell_elements_version_element_unique": {
           "name": "cell_elements_version_element_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "version_id",
             "element_id"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -173,36 +173,36 @@
         "cells_row_fk": {
           "name": "cells_row_fk",
           "tableFrom": "cells",
-          "tableTo": "rows",
           "columnsFrom": [
             "version_id",
             "row_id"
           ],
+          "tableTo": "rows",
           "columnsTo": [
             "version_id",
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "cells_row_position_unique": {
           "name": "cells_row_position_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "row_id",
             "position"
-          ]
+          ],
+          "nullsNotDistinct": false
         },
         "cells_version_id_unique": {
           "name": "cells_version_id_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "version_id",
             "id"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -277,48 +277,48 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "elements_post_id_posts_id_fk": {
           "name": "elements_post_id_posts_id_fk",
           "tableFrom": "elements",
-          "tableTo": "posts",
           "columnsFrom": [
             "post_id"
           ],
+          "tableTo": "posts",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "elements_media_id_media_id_fk": {
           "name": "elements_media_id_media_id_fk",
           "tableFrom": "elements",
-          "tableTo": "media",
           "columnsFrom": [
             "media_id"
           ],
+          "tableTo": "media",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "elements_post_id_unique": {
           "name": "elements_post_id_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "post_id",
             "id"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -405,10 +405,10 @@
       "uniqueConstraints": {
         "media_r2_key_unique": {
           "name": "media_r2_key_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "r2_key"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -444,15 +444,15 @@
         "post_slug_redirects_post_id_posts_id_fk": {
           "name": "post_slug_redirects_post_id_posts_id_fk",
           "tableFrom": "post_slug_redirects",
-          "tableTo": "posts",
           "columnsFrom": [
             "post_id"
           ],
+          "tableTo": "posts",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -523,37 +523,37 @@
             }
           ],
           "isUnique": false,
-          "where": "\"posts\".\"published_version_id\" IS NOT NULL",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"posts\".\"published_version_id\" IS NOT NULL",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "posts_published_version_fk": {
           "name": "posts_published_version_fk",
           "tableFrom": "posts",
-          "tableTo": "versions",
           "columnsFrom": [
             "id",
             "published_version_id"
           ],
+          "tableTo": "versions",
           "columnsTo": [
             "post_id",
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "posts_slug_unique": {
           "name": "posts_slug_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "slug"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -606,34 +606,34 @@
         "rows_version_id_versions_id_fk": {
           "name": "rows_version_id_versions_id_fk",
           "tableFrom": "rows",
-          "tableTo": "versions",
           "columnsFrom": [
             "version_id"
           ],
+          "tableTo": "versions",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "rows_version_position_unique": {
           "name": "rows_version_position_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "version_id",
             "position"
-          ]
+          ],
+          "nullsNotDistinct": false
         },
         "rows_version_id_unique": {
           "name": "rows_version_id_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "version_id",
             "id"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -689,17 +689,17 @@
       "uniqueConstraints": {
         "tags_name_unique": {
           "name": "tags_name_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "name"
-          ]
+          ],
+          "nullsNotDistinct": false
         },
         "tags_slug_unique": {
           "name": "tags_slug_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "slug"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -735,37 +735,37 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "version_tags_version_id_versions_id_fk": {
           "name": "version_tags_version_id_versions_id_fk",
           "tableFrom": "version_tags",
-          "tableTo": "versions",
           "columnsFrom": [
             "version_id"
           ],
+          "tableTo": "versions",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "version_tags_tag_id_tags_id_fk": {
           "name": "version_tags_tag_id_tags_id_fk",
           "tableFrom": "version_tags",
-          "tableTo": "tags",
           "columnsFrom": [
             "tag_id"
           ],
+          "tableTo": "tags",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -850,58 +850,58 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "versions_post_id_posts_id_fk": {
           "name": "versions_post_id_posts_id_fk",
           "tableFrom": "versions",
-          "tableTo": "posts",
           "columnsFrom": [
             "post_id"
           ],
+          "tableTo": "posts",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "versions_parent_fk": {
           "name": "versions_parent_fk",
           "tableFrom": "versions",
-          "tableTo": "versions",
           "columnsFrom": [
             "post_id",
             "parent_version_id"
           ],
+          "tableTo": "versions",
           "columnsTo": [
             "post_id",
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "versions_post_number_unique": {
           "name": "versions_post_number_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "post_id",
             "number"
-          ]
+          ],
+          "nullsNotDistinct": false
         },
         "versions_post_id_unique": {
           "name": "versions_post_id_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "post_id",
             "id"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -916,10 +916,10 @@
   },
   "enums": {},
   "schemas": {},
+  "views": {},
   "sequences": {},
   "roles": {},
   "policies": {},
-  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},
