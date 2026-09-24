@@ -4,21 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ApiError } from "@/shared/api/errors";
 import type { Tag, TagWithUsage } from "@/shared/api/tags";
 import { api } from "../api-client";
-
-const input = "rounded border border-zinc-300 bg-white px-2 py-1 text-sm focus:border-zinc-500 focus:outline-none";
-const button = "rounded px-3 py-1 text-sm font-medium disabled:opacity-50";
-const primary = `${button} bg-zinc-900 text-white hover:bg-zinc-700`;
-const secondary = `${button} border border-zinc-300 bg-white hover:bg-zinc-100`;
-const danger = `${button} bg-red-600 text-white hover:bg-red-500`;
-
-function ErrorText({ error }: { error: ApiError | null }) {
-  if (!error) return null;
-  return (
-    <p role="alert" className="text-sm text-red-600">
-      {error.issues?.[0]?.message ?? error.message}
-    </p>
-  );
-}
+import { dangerButton, ErrorText, inputClass, primaryButton, secondaryButton } from "../ui";
 
 export function TagManager() {
   const [tags, setTags] = useState<TagWithUsage[] | null>(null);
@@ -82,12 +68,12 @@ function CreateTagForm({ onCreated }: { onCreated: () => Promise<void> }) {
       <div className="flex gap-2">
         <input
           id="new-tag"
-          className={`${input} w-64`}
+          className={`${inputClass} w-64`}
           value={name}
           onChange={(e) => setName(e.target.value)}
           aria-invalid={error !== null}
         />
-        <button type="submit" className={primary} disabled={busy || !name.trim()}>
+        <button type="submit" className={primaryButton} disabled={busy || !name.trim()}>
           Anlegen
         </button>
       </div>
@@ -144,16 +130,16 @@ function TagItem({ tag, onChanged }: { tag: TagWithUsage; onChanged: () => Promi
           <div className="flex flex-wrap items-end gap-2">
             <label className="text-sm">
               <span className="block font-medium">Name</span>
-              <input className={`${input} w-56`} value={name} onChange={(e) => setName(e.target.value)} />
+              <input className={`${inputClass} w-56`} value={name} onChange={(e) => setName(e.target.value)} />
             </label>
             <label className="text-sm">
               <span className="block font-medium">Slug</span>
-              <input className={`${input} w-56 font-mono`} value={slug} onChange={(e) => setSlug(e.target.value)} />
+              <input className={`${inputClass} w-56 font-mono`} value={slug} onChange={(e) => setSlug(e.target.value)} />
             </label>
-            <button type="submit" className={primary} disabled={busy}>
+            <button type="submit" className={primaryButton} disabled={busy}>
               Speichern
             </button>
-            <button type="button" className={secondary} onClick={() => setMode("view")}>
+            <button type="button" className={secondaryButton} onClick={() => setMode("view")}>
               Abbrechen
             </button>
           </div>
@@ -162,7 +148,7 @@ function TagItem({ tag, onChanged }: { tag: TagWithUsage; onChanged: () => Promi
           )}
           <ErrorText error={error} />
           {error?.code === "stale" && (
-            <button type="button" className={secondary} onClick={onChanged}>
+            <button type="button" className={secondaryButton} onClick={onChanged}>
               Neu laden
             </button>
           )}
@@ -187,20 +173,20 @@ function TagItem({ tag, onChanged }: { tag: TagWithUsage; onChanged: () => Promi
             „{tag.name}“ löschen?
             {tag.postCount > 0 && ` Der Tag wird aus ${tag.postCount} ${tag.postCount === 1 ? "Post" : "Posts"} entfernt, auch aus älteren Versionen.`}
           </p>
-          <button type="button" className={danger} onClick={remove} disabled={busy}>
+          <button type="button" className={dangerButton} onClick={remove} disabled={busy}>
             Endgültig löschen
           </button>
-          <button type="button" className={secondary} onClick={() => setMode("view")}>
+          <button type="button" className={secondaryButton} onClick={() => setMode("view")}>
             Abbrechen
           </button>
           <ErrorText error={error} />
         </div>
       ) : (
         <div className="flex gap-2">
-          <button type="button" className={secondary} onClick={startEdit}>
+          <button type="button" className={secondaryButton} onClick={startEdit}>
             Bearbeiten
           </button>
-          <button type="button" className={secondary} onClick={() => setMode("confirm-delete")}>
+          <button type="button" className={secondaryButton} onClick={() => setMode("confirm-delete")}>
             Löschen
           </button>
         </div>

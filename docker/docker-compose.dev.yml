@@ -1,5 +1,14 @@
 name: rootyourself
 
+# Lokale Zugangsdaten für Datenbank und Speicher – nur für die Entwicklung, keine Geheimnisse.
+x-storage-env: &storage-env
+  S3_ENDPOINT: http://storage:9000
+  S3_REGION: us-east-1
+  S3_FORCE_PATH_STYLE: "true"
+  S3_ACCESS_KEY_ID: rootyourself
+  S3_SECRET_ACCESS_KEY: rootyourself-dev
+  S3_BUCKET: rootyourself-media
+
 services:
   web:
     build:
@@ -12,12 +21,18 @@ services:
       - /app/node_modules
       - /app/.next
     environment:
-      - WATCHPACK_POLLING=true
+      <<: *storage-env
+      WATCHPACK_POLLING: "true"
       # Hat Vorrang vor .env.local (dort steht die Host-Adresse localhost:5433 für drizzle-kit).
-      - DATABASE_URL=postgres://postgres:postgres@db:5432/rootyourself
+      DATABASE_URL: postgres://postgres:postgres@db:5432/rootyourself
+      # Der Browser erreicht den Speicher über den Host, nicht über den Container-Namen.
+      S3_PUBLIC_ENDPOINT: http://localhost:9000
+      MEDIA_PUBLIC_URL: http://localhost:9000/rootyourself-media
     depends_on:
       db:
         condition: service_healthy
+      storage-setup:
+        condition: service_completed_successfully
 
   # Lokale Entwicklungsdatenbank, gleiche Postgres-Version wie Neon.
   db:
@@ -25,9 +40,9 @@ services:
     ports:
       - "5433:5432"
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=rootyourself
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: rootyourself
     volumes:
       # Ab Postgres 18 liegt PGDATA unterhalb von /var/lib/postgresql/<version>.
       - pgdata:/var/lib/postgresql
@@ -37,5 +52,33 @@ services:
       timeout: 5s
       retries: 15
 
+  # S3-kompatibler Speicher als lokaler Ersatz für Cloudflare R2 (MinIO gibt es nicht mehr als Image).
+  # Weboberfläche: http://localhost:9001 (Zugang siehe x-storage-env).
+  storage:
+    image: rustfs/rustfs:1.0.0
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      RUSTFS_ACCESS_KEY: rootyourself
+      RUSTFS_SECRET_KEY: rootyourself-dev
+      RUSTFS_CONSOLE_ENABLE: "true"
+    volumes:
+      - storage:/data
+
+  # Legt einmalig den Bucket an und setzt öffentliches Lesen und CORS (scripts/setup-storage.mjs).
+  storage-setup:
+    image: node:24-alpine
+    working_dir: /app
+    volumes:
+      - ..:/app:ro
+    environment:
+      <<: *storage-env
+      MEDIA_CORS_ORIGINS: http://localhost:3002
+    command: ["node", "scripts/setup-storage.mjs"]
+    depends_on:
+      - storage
+
 volumes:
   pgdata:
+  storage:

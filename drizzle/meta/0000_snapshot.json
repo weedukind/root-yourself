@@ -1,5 +1,5 @@
 {
-  "id": "17e23039-a654-4196-8cc9-b8347d135d06",
+  "id": "30b01b37-bc0e-4bec-93b5-b40557db9a05",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -341,8 +341,8 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "r2_key": {
-          "name": "r2_key",
+        "storage_key": {
+          "name": "storage_key",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -403,11 +403,11 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "media_r2_key_unique": {
-          "name": "media_r2_key_unique",
+        "media_storage_key_unique": {
+          "name": "media_storage_key_unique",
           "nullsNotDistinct": false,
           "columns": [
-            "r2_key"
+            "storage_key"
           ]
         }
       },

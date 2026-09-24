@@ -37,7 +37,7 @@ export const tags = pgTable("tags", {
 
 export const media = pgTable("media", {
   id: uuid("id").primaryKey().defaultRandom(),
-  r2Key: text("r2_key").notNull().unique(),
+  storageKey: text("storage_key").notNull().unique(),
   filename: text("filename").notNull(),
   mimeType: text("mime_type").notNull(),
   sizeBytes: integer("size_bytes").notNull(),

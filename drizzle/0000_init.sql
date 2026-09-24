@@ -34,7 +34,7 @@ CREATE TABLE "elements" (
 --> statement-breakpoint
 CREATE TABLE "media" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"r2_key" text NOT NULL,
+	"storage_key" text NOT NULL,
 	"filename" text NOT NULL,
 	"mime_type" text NOT NULL,
 	"size_bytes" integer NOT NULL,
@@ -43,7 +43,7 @@ CREATE TABLE "media" (
 	"alt" text DEFAULT '' NOT NULL,
 	"created_at" timestamp (3) with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp (3) with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "media_r2_key_unique" UNIQUE("r2_key")
+	CONSTRAINT "media_storage_key_unique" UNIQUE("storage_key")
 );
 --> statement-breakpoint
 CREATE TABLE "post_slug_redirects" (

@@ -1,6 +1,9 @@
 import Link from "next/link";
 
-const NAV = [{ href: "/admin/tags", label: "Tags" }] as const;
+const NAV = [
+  { href: "/admin/media", label: "Mediathek" },
+  { href: "/admin/tags", label: "Tags" },
+] as const;
 
 export default function AdminLayout({ children }: LayoutProps<"/admin">) {
   return (

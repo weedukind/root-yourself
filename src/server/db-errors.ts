@@ -13,3 +13,8 @@ export function uniqueViolation(error: unknown): string | undefined {
   const pg = pgError(error);
   return pg?.code === "23505" ? pg.constraint : undefined;
 }
+
+/** true, wenn ein Löschen an ON DELETE RESTRICT gescheitert ist. */
+export function restrictViolation(error: unknown): boolean {
+  return pgError(error)?.code === "23001";
+}

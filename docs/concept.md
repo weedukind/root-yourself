@@ -11,12 +11,12 @@ Next.js-App. Es gibt genau eine Person, die Posts schreibt.
 | Hosting            | Vercel (kein lokales Dateisystem – nichts wird lokal abgelegt)        |
 | Datenbank          | Neon Postgres 18 (Free-Plan), via Vercel Marketplace                  |
 | Datenbank-Zugriff  | Drizzle ORM; Neon-WebSocket-Treiber (Produktion), `pg` (lokal)        |
-| Bilder             | Cloudflare R2 (Produktion), MinIO (lokal); Upload per Presigned URL direkt aus dem Browser |
+| Bilder             | Cloudflare R2 (Produktion), RustFS (lokal, S3-kompatibel); Upload per Presigned URL direkt aus dem Browser |
 | Backend-Schnittstelle | REST-API über Route Handlers (`src/app/api/…`)                     |
 | Zugangsschutz      | HTTP Basic Auth (htpasswd-kompatibler Hash) in `proxy.ts`             |
 | Tests              | Vitest gegen eine Testdatenbank im lokalen Postgres-Container         |
 | Suche              | Später: Algolia, befüllt beim Veröffentlichen                         |
-| Lokale Entwicklung | Docker (`docker/docker-compose.dev.yml`): App auf Port 3002, Postgres 18 auf Port 5433 |
+| Lokale Entwicklung | Docker (`docker/docker-compose.dev.yml`): App auf Port 3002, Postgres 18 auf Port 5433, RustFS auf Port 9000 (Weboberfläche 9001) |
 
 ## Lokale Entwicklung
 
@@ -28,7 +28,11 @@ Next.js-App. Es gibt genau eine Person, die Posts schreibt.
   vom Host aus funktioniert. Im Web-Container überschreibt die Compose-Datei den Wert mit `db:5432`.
 - Die Produktions-Datenbank steht bewusst nicht in `.env.local`. Migrationen für Neon:
   `vercel env pull` in eine separate Datei und `DATABASE_URL` gezielt setzen.
-- Geplant: MinIO-Container als S3-kompatibler Ersatz für R2.
+- RustFS ersetzt lokal Cloudflare R2 (MinIO wird nicht mehr als Image veröffentlicht). Der Code
+  spricht nur die S3-API; umgeschaltet wird über die `S3_…`-Variablen. `storage-setup` legt beim
+  Start den Bucket an und setzt öffentliches Lesen und CORS (`scripts/setup-storage.mjs`).
+- Neue npm-Pakete brauchen einen Neubau des Web-Containers (`npm run docker:dev:build`), weil
+  dessen `node_modules` in einem eigenen Volume liegen.
 
 ## Entitäten
 
@@ -233,7 +237,7 @@ erDiagram
     }
     media {
         uuid id PK
-        text r2_key UK
+        text storage_key UK
         text filename
         text mime_type
         int size_bytes
@@ -271,7 +275,7 @@ CREATE TABLE tags (
 
 CREATE TABLE media (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  r2_key      text NOT NULL UNIQUE,
+  storage_key text NOT NULL UNIQUE,
   filename    text NOT NULL,
   mime_type   text NOT NULL,
   size_bytes  integer NOT NULL,
@@ -430,8 +434,8 @@ er eine eigene, optionale FK-Spalte nach dem Muster von `media_id`.
 | Slug ändern (gilt für alle Versionen) | War der Post schon einmal veröffentlicht, Eintrag in `post_slug_redirects`, dauerhafte Weiterleitung (308) auf den aktuellen Slug, keine Ketten. Überschreib-Schutz über `posts.updated_at`. |
 | Neuer Slug entspricht einem alten Slug | Der Weiterleitungseintrag wird in derselben Transaktion gelöscht. |
 
-- Bild-URLs werden nicht gespeichert, sondern aus `r2_key` und `R2_PUBLIC_URL`
-  zusammengesetzt.
+- Bild-URLs werden nicht gespeichert, sondern aus `storage_key` und
+  `MEDIA_PUBLIC_URL` zusammengesetzt.
 
 ## REST-API
 
@@ -527,6 +531,37 @@ src/
 - Datum: „Veröffentlicht am“ = `posts.first_published_at`; zusätzlich
   „Aktualisiert am“ = `published_at` der veröffentlichten Version, wenn später.
 
+## Mediathek
+
+1. `POST /api/admin/media/uploads` prüft Typ und Größe und vergibt den
+   Schlüssel `JJJJ/MM/<uuid>.<endung>`. Die Presigned URL (10 Minuten gültig)
+   unterschreibt `content-type` und `content-length` mit – ein PUT mit anderem
+   Typ oder anderer Größe wird vom Speicher abgelehnt.
+2. Der Browser lädt die Datei direkt in den Speicher (nicht durch die App:
+   Vercel begrenzt Request-Bodies auf 4,5 MB).
+3. `POST /api/admin/media` prüft den Schlüssel gegen das Muster, liest Größe
+   und Typ per `HEAD` aus dem Speicher (nicht aus der Anfrage) und legt erst
+   dann den Eintrag an. Ungültige Dateien werden gelöscht.
+
+- Erlaubt: JPEG, PNG, WebP, AVIF, GIF, bis 20 MB. SVG nicht (kann Skripte
+  enthalten).
+- Löschen: erst der Datenbankeintrag, dann die Datei. Scheitert das Löschen
+  der Datei, bleibt höchstens eine verwaiste Datei, nie ein Eintrag ohne Datei.
+- Hochgeladene, aber nie bestätigte Dateien bleiben im Bucket liegen. Bei R2
+  räumt eine Lifecycle-Regel das später auf (offen).
+
+### Einrichtung von Cloudflare R2 (Produktion)
+
+- Bucket anlegen, eigene Domain am Bucket aktivieren (die `r2.dev`-Adresse ist
+  nicht für Produktion gedacht) → `MEDIA_PUBLIC_URL`.
+- API-Token mit Schreibrecht auf den Bucket → `S3_ACCESS_KEY_ID`,
+  `S3_SECRET_ACCESS_KEY`.
+- `S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com`,
+  `S3_REGION=auto`, `S3_BUCKET=…`.
+- CORS für die Blog-Domain setzen: `scripts/setup-storage.mjs` mit
+  `S3_SKIP_POLICY=true` (R2 kennt keine Bucket-Policies) und
+  `MEDIA_CORS_ORIGINS=https://…`.
+
 ## Admin-Bereich (`/admin`, Basic Auth)
 
 - Posts: anlegen, Versionsbaum anzeigen, Version bearbeiten (Rows und Zellen
@@ -536,7 +571,7 @@ src/
   nur lesend.
 - Tags: anlegen, umbenennen, löschen (mit Anzeige der Nutzungsanzahl).
 - Mediathek: Upload (Presigned URL → R2, Breite/Höhe im Browser ermittelt),
-  Alt-Text bearbeiten, löschen.
+  Alt-Text bearbeiten, löschen (nur nicht verwendete Bilder).
 - Die Admin-Oberfläche entsteht Schritt für Schritt zusammen mit dem jeweiligen
   Backend-Teil.
 
@@ -559,7 +594,7 @@ src/
 1. Fundament: Slug-Erzeugung (mit Umlauten), Ergebnistyp, Fehler → HTTP,
    Vitest mit Testdatenbank, Schema-Migration auf das Versionsmodell.
 2. Tags: Service, API, Admin-Seite.
-3. Mediathek: MinIO lokal, Presigned Upload, Service, API, Admin-Seite.
+3. Mediathek: RustFS lokal, Presigned Upload, Service, API, Admin-Seite.
 4. Posts und Versionen: Anlegen, Speichern mit Copy-on-Write und Auto-Fork,
    Forken, Veröffentlichen, Löschen, Slug-Weiterleitung; API; Editor.
 5. Öffentliche Abfragen, Seiten und Cache-Invalidierung.

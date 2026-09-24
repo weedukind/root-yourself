@@ -203,7 +203,7 @@ describe("Elemente", () => {
       const a = await createPost(db);
       const [medium] = await db
         .insert(media)
-        .values({ r2Key: "k", filename: "f.jpg", mimeType: "image/jpeg", sizeBytes: 1, width: 1, height: 1 })
+        .values({ storageKey: "k", filename: "f.jpg", mimeType: "image/jpeg", sizeBytes: 1, width: 1, height: 1 })
         .returning();
       expect(
         await expectDbError(db, (tx) => tx.insert(elements).values({ postId: a.postId, type: "image" })),
@@ -220,7 +220,7 @@ describe("Elemente", () => {
       const a = await createPost(db);
       const [medium] = await db
         .insert(media)
-        .values({ r2Key: "k", filename: "f.jpg", mimeType: "image/jpeg", sizeBytes: 1, width: 1, height: 1 })
+        .values({ storageKey: "k", filename: "f.jpg", mimeType: "image/jpeg", sizeBytes: 1, width: 1, height: 1 })
         .returning();
       await db.insert(elements).values({ postId: a.postId, type: "image", mediaId: medium.id });
       const code = await expectDbError(db, (tx) => tx.delete(media).where(eq(media.id, medium.id)));
