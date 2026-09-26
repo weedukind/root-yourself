@@ -104,14 +104,18 @@ Footer   – für alle Seiten gleich, im Code
 | Layout ändern (Rows, Grid, Zellen) | Nur `rows` und `cells` dieser Version; Elemente werden nicht geklont. |
 | Tags ändern | Nur `version_tags` dieser Version. Kein Teilen, kein Copy-on-Write. |
 | Aufräumen | Elemente, die keine Version mehr nutzt, werden in derselben Transaktion gelöscht. |
-| Version veröffentlichen | Jede Version (auch ein innerer Knoten = Rollback). `posts.published_version_id` zeigt auf sie, `versions.published_at = now()`, beim ersten Mal auch `posts.first_published_at = now()`. |
+| Version veröffentlichen | Jede Version (auch ein innerer Knoten = Rollback). `posts.published_version_id` zeigt auf sie, `versions.published_at = now()`, beim ersten Mal auch `posts.first_published_at = now()`. Ändert `posts.updated_at` (der Slug-Überschreib-Schutz sieht die Veröffentlichung). |
 | Veröffentlichung zurückziehen | `posts.published_version_id = NULL`. |
-| Version löschen | Nur unveröffentlichte Blätter, und nicht die letzte verbleibende Version eines Posts. |
+| Version löschen | Nur unveröffentlichte Blätter, und nicht die letzte verbleibende Version eines Posts (`409 version_published` / `version_has_children` / `last_version`). |
 
 - Innerhalb einer Version kommt jedes Element höchstens einmal vor.
-- Speichern, Forken und Löschen sperren die betroffene Version
-  (`SELECT … FOR UPDATE`), damit „ist ein Blatt“ zwischen Prüfung und
-  Schreiben nicht durch ein paralleles Forken ungültig wird.
+- Jede Änderung an Versionen (Speichern, Forken, Veröffentlichen, Löschen)
+  sperrt den Post (`SELECT … FOR UPDATE`). Änderungen an einem Post laufen
+  dadurch nacheinander: „ist ein Blatt“ kann zwischen Prüfung und Schreiben
+  nicht durch ein paralleles Forken ungültig werden, und die nächste
+  Versionsnummer ist eindeutig.
+- Wird der einzige Fork einer Version gelöscht, ist sie wieder ein Blatt und
+  damit – sofern nicht veröffentlicht – wieder bearbeitbar.
 
 ### Speichern eines Blatts im Detail
 
@@ -483,12 +487,12 @@ Alle Antworten sind JSON. Fehler haben immer die Form
 | `GET` | `/posts/:id` | Post mit Versionen (ID, Nummer, Eltern, Titel, veröffentlicht, Blatt, bearbeitbar, `updatedAt`) und früheren Slugs |
 | `PATCH` | `/posts/:id` | Slug ändern `{ slug, updatedAt }` |
 | `DELETE` | `/posts/:id` | Post löschen |
-| `POST` | `/posts/:id/unpublish` | Veröffentlichung zurückziehen |
+| `POST` | `/posts/:id/unpublish` | Veröffentlichung zurückziehen; liefert den Post |
 | `GET` | `/posts/:id/versions/:vid` | Version vollständig: Titel, Tags, Elemente |
 | `PUT` | `/posts/:id/versions/:vid` | Version speichern (bei veröffentlichtem Blatt: Auto-Fork) |
 | `DELETE` | `/posts/:id/versions/:vid` | Unveröffentlichtes Blatt löschen |
-| `POST` | `/posts/:id/versions/:vid/fork` | Aktiv forken |
-| `POST` | `/posts/:id/versions/:vid/publish` | Diese Version veröffentlichen (auch Rollback) |
+| `POST` | `/posts/:id/versions/:vid/fork` | Aktiv forken; liefert die neue Version (`201`) |
+| `POST` | `/posts/:id/versions/:vid/publish` | Diese Version veröffentlichen (auch Rollback); liefert den Post |
 
 ### Öffentlich (ohne Anmeldung, gecacht)
 

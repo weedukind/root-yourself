@@ -48,8 +48,9 @@ export function PostEditor({ id }: { id: string }) {
         <h1 className="text-2xl font-semibold">{post.title}</h1>
         <PostStatus post={post} />
       </div>
+      <PublicationSection post={post} onChanged={setPost} />
+      <VersionTree post={post} onChanged={load} />
       <SlugSection post={post} onChanged={setPost} onReload={load} />
-      <VersionsSection versions={post.versions} />
       <DeleteSection post={post} />
     </div>
   );
@@ -142,25 +143,148 @@ function versionState(version: VersionSummary) {
   return <Badge tone="zinc">eingefroren</Badge>;
 }
 
-function VersionsSection({ versions }: { versions: VersionSummary[] }) {
-  const numberOf = new Map(versions.map((v) => [v.id, v.number]));
+function PublicationSection({ post, onChanged }: { post: PostDetail; onChanged: (post: PostDetail) => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState<ApiError | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function unpublish() {
+    setBusy(true);
+    const result = await api<PostDetail>(`/posts/${post.id}/unpublish`, { method: "POST" });
+    setBusy(false);
+    if (!result.ok) return setError(result.error);
+    setConfirming(false);
+    onChanged(result.value);
+  }
+
   return (
-    <Section title="Versionen">
-      <ul className="divide-y divide-zinc-100">
-        {versions.map((version) => (
-          <li key={version.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
-            <span className="w-8 font-mono text-zinc-500">v{version.number}</span>
-            <span className="min-w-0 flex-1">{version.title}</span>
-            {version.parentVersionId && (
-              <span className="text-xs text-zinc-500">von v{numberOf.get(version.parentVersionId)}</span>
-            )}
-            {versionState(version)}
-            <span className="w-40 text-right text-xs text-zinc-500">geändert {formatDateTime(version.updatedAt)}</span>
+    <Section title="Veröffentlichung">
+      {post.publishedVersion ? (
+        <p className="text-sm">
+          Öffentlich ist <strong>Version {post.publishedVersion.number}</strong>
+          {post.publishedVersion.publishedAt && ` seit ${formatDateTime(post.publishedVersion.publishedAt)}`}.
+          {post.firstPublishedAt && ` Zuerst veröffentlicht am ${formatDateTime(post.firstPublishedAt)}.`}
+        </p>
+      ) : (
+        <p className="text-sm text-zinc-600">
+          Der Post ist nicht öffentlich.
+          {post.firstPublishedAt && ` Er war zuerst am ${formatDateTime(post.firstPublishedAt)} veröffentlicht.`} Zum
+          Veröffentlichen eine Version im Versionsbaum wählen.
+        </p>
+      )}
+      {post.publishedVersion &&
+        (confirming ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm">Der Post verschwindet von der Website; alle Versionen bleiben erhalten.</span>
+            <button type="button" className={dangerButton} onClick={unpublish} disabled={busy}>
+              Zurückziehen
+            </button>
+            <button type="button" className={secondaryButton} onClick={() => setConfirming(false)}>
+              Abbrechen
+            </button>
+          </div>
+        ) : (
+          <button type="button" className={secondaryButton} onClick={() => setConfirming(true)}>
+            Veröffentlichung zurückziehen …
+          </button>
+        ))}
+      <ErrorText error={error} />
+    </Section>
+  );
+}
+
+function VersionTree({ post, onChanged }: { post: PostDetail; onChanged: () => Promise<void> }) {
+  const children = new Map<string | null, VersionSummary[]>();
+  for (const version of post.versions) {
+    const key = version.parentVersionId;
+    children.set(key, [...(children.get(key) ?? []), version]);
+  }
+
+  const renderLevel = (parentId: string | null) => {
+    const level = children.get(parentId);
+    if (!level) return null;
+    return (
+      <ul className={parentId ? "ml-4 border-l border-zinc-200 pl-3" : ""}>
+        {level.map((version) => (
+          <li key={version.id}>
+            <VersionNode post={post} version={version} onChanged={onChanged} />
+            {renderLevel(version.id)}
           </li>
         ))}
       </ul>
-      <p className="text-xs text-zinc-500">Forken, Veröffentlichen und Bearbeiten folgen in den nächsten Schritten.</p>
+    );
+  };
+
+  return (
+    <Section title="Versionen">
+      <p className="text-xs text-zinc-500">
+        Bearbeitbar sind nur unveröffentlichte Versionen ohne Forks. Um an einer anderen Version weiterzuarbeiten, sie forken.
+      </p>
+      {renderLevel(null)}
     </Section>
+  );
+}
+
+function VersionNode({
+  post,
+  version,
+  onChanged,
+}: {
+  post: PostDetail;
+  version: VersionSummary;
+  onChanged: () => Promise<void>;
+}) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [error, setError] = useState<ApiError | null>(null);
+  const [busy, setBusy] = useState(false);
+  const base = `/posts/${post.id}/versions/${version.id}`;
+  const canDelete = version.isEditable && post.versionCount > 1;
+
+  async function run(path: string, method: "POST" | "DELETE") {
+    setBusy(true);
+    const result = await api<unknown>(path, { method });
+    setBusy(false);
+    if (!result.ok) return setError(result.error);
+    setError(null);
+    setConfirmDelete(false);
+    await onChanged();
+  }
+
+  return (
+    <div className="space-y-1 py-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+        <span className="font-mono text-zinc-500">v{version.number}</span>
+        <span className="min-w-0 flex-1">{version.title}</span>
+        {versionState(version)}
+        <span className="text-xs text-zinc-500">geändert {formatDateTime(version.updatedAt)}</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className={secondaryButton} disabled={busy} onClick={() => run(`${base}/fork`, "POST")}>
+          Forken
+        </button>
+        {!version.isPublished && (
+          <button type="button" className={secondaryButton} disabled={busy} onClick={() => run(`${base}/publish`, "POST")}>
+            {post.publishedVersion ? `Statt v${post.publishedVersion.number} veröffentlichen` : "Veröffentlichen"}
+          </button>
+        )}
+        {canDelete &&
+          (confirmDelete ? (
+            <>
+              <button type="button" className={dangerButton} disabled={busy} onClick={() => run(base, "DELETE")}>
+                v{version.number} endgültig löschen
+              </button>
+              <button type="button" className={secondaryButton} onClick={() => setConfirmDelete(false)}>
+                Abbrechen
+              </button>
+            </>
+          ) : (
+            <button type="button" className={secondaryButton} disabled={busy} onClick={() => setConfirmDelete(true)}>
+              Löschen
+            </button>
+          ))}
+      </div>
+      <ErrorText error={error} />
+    </div>
   );
 }
 
