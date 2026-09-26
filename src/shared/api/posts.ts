@@ -32,6 +32,8 @@ export type VersionSummary = {
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Vorschau-Link für den Admin-Bereich (1 Tag gültig, bei jedem Laden neu erzeugt). */
+  previewPath: string;
 };
 
 export type PostSummary = {
@@ -49,6 +51,10 @@ export type PostSummary = {
   /** Letzte Änderung am Post oder an einer seiner Versionen. */
   lastChangedAt: string;
 };
+
+export const shareLinkInput = z.object({ days: z.union([z.literal(1), z.literal(7), z.literal(30)]) });
+
+export type ShareLink = { path: string; expiresAt: string };
 
 export type PostDetail = PostSummary & {
   versions: VersionSummary[];

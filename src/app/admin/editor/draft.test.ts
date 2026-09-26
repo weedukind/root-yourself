@@ -19,6 +19,7 @@ const version: VersionDetail = {
   id: "v1",
   postId: "p1",
   postSlug: "wurzeln",
+  previewPath: "/preview/wurzeln/v1/token",
   postPublishedVersion: null,
   postFirstPublishedAt: null,
   number: 1,

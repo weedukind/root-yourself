@@ -11,12 +11,16 @@ import type {
   VersionSummary,
 } from "@/shared/api/posts";
 import { uniqueViolation } from "../db-errors";
+import { createPreviewToken, previewPath } from "../preview-token";
 import { conflict, invalid, notFound, ok, type Result } from "../result";
 
 type PostRow = typeof posts.$inferSelect;
 type VersionRow = typeof versions.$inferSelect;
 
 const iso = (date: Date | null) => date?.toISOString() ?? null;
+
+/** Gültigkeit der Vorschau-Links, die der Admin-Bereich selbst anzeigt. */
+const ADMIN_PREVIEW_DAYS = 1;
 
 const slugTaken = () => conflict("slug_taken", "Ein anderer Post hat bereits diesen Slug", "slug");
 const slugInvalid = () =>
@@ -36,6 +40,7 @@ function toVersion(row: VersionRow, post: PostRow, parentIds: Set<string>): Vers
     publishedAt: iso(row.publishedAt),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    previewPath: previewPath(post.slug, row.id, createPreviewToken(row.id, ADMIN_PREVIEW_DAYS).token),
   };
 }
 

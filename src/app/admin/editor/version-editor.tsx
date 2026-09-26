@@ -12,6 +12,7 @@ import { api } from "../api-client";
 import { Badge, ErrorText, inputClass, PreviewLink, primaryButton, PublicPostLink, secondaryButton } from "../ui";
 import { type Draft, fingerprint, fromVersion, toInput, toRowViews } from "./draft";
 import { LayoutEditor } from "./layout-editor";
+import { ShareLinkPanel } from "./share-link";
 
 type Loaded = { version: VersionDetail; draft: Draft; baseline: string };
 
@@ -141,7 +142,7 @@ export function VersionEditor({ postId, versionId }: { postId: string; versionId
           {version.isPublished ? (
             <PublicPostLink slug={version.postSlug} />
           ) : (
-            <PreviewLink postId={postId} versionId={versionId} />
+            <PreviewLink path={version.previewPath} />
           )}
         </div>
         <SavedNotice notice={notice} onClear={() => setNotice(null)} />
@@ -164,6 +165,7 @@ export function VersionEditor({ postId, versionId }: { postId: string; versionId
             </button>
           </div>
         )}
+        {!version.isPublished && <ShareLinkPanel postId={postId} versionId={versionId} />}
         {frozen && (
           <div className="flex flex-wrap items-center gap-2 rounded bg-zinc-100 p-2 text-sm">
             <span>Diese Version hat Forks und ist eingefroren.</span>

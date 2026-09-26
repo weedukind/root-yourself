@@ -565,13 +565,34 @@ src/
 - Der Admin-Bereich verlinkt die öffentliche Seite (neues Fenster) im Abschnitt
   „Veröffentlichung“, bei der veröffentlichten Version im Versionsbaum und im
   Editor der veröffentlichten Version.
-- Vorschau jeder Version: `/admin/posts/[id]/versions/[vid]/preview` – im
-  Rahmen der Website (gemeinsame Komponenten `SiteFrame`, `PostArticle`,
-  `PostContent`) mit einem Vorschau-Balken; per Basic Auth geschützt, nicht
-  indexierbar. Zeigt den gespeicherten Stand. Verlinkt (neues Fenster) bei
-  jeder unveröffentlichten Version im Versionsbaum und im Editor.
-- Routengruppen: `(site)` für die Website, `admin/(backend)` für den
-  Admin-Rahmen, `admin/(preview)` für die Vorschau ohne Admin-Rahmen.
+- Routengruppen: `(site)` für die Website, `(preview)` für die Vorschau,
+  `admin/(backend)` für den Admin-Rahmen.
+
+## Vorschau
+
+`/preview/<slug>/<version-id>/<token>` zeigt eine Version im Rahmen der
+Website (gemeinsame Komponenten `SiteFrame`, `PostArticle`, `PostContent`) mit
+einem Vorschau-Balken (Version, veröffentlicht oder nicht, Gültigkeit).
+
+- Ohne Anmeldung erreichbar – aber nur mit gültigem Token. So lassen sich
+  Vorschauen teilen, ohne Admin-Zugang zu vergeben.
+- Token: `<Ablauf in Sekunden, Basis 36>.<HMAC-SHA256(PREVIEW_SECRET,
+  "<version-id>.<ablauf>")>` (`src/server/preview-token.ts`). Gilt nur für
+  diese Version und nur bis zum Ablauf; manipulierte, abgelaufene oder fremde
+  Tokens ergeben 404. Ein neuer `PREVIEW_SECRET` macht alle Links ungültig;
+  einzelne Links lassen sich nicht widerrufen.
+- Der Slug ist Zierde: Gefunden wird über die Versions-ID; bei geändertem Slug
+  leitet der Link auf die aktuelle Adresse weiter.
+- Zeigt den gespeicherten Stand – bei bearbeitbaren Versionen also auch
+  spätere Änderungen.
+- `noindex, nofollow` und `Referrer-Policy: no-referrer`, damit der Token
+  nicht an fremde Seiten weitergegeben wird.
+- Admin-Bereich: „Vorschau ↗“ im Versionsbaum und im Editor nutzt Links mit
+  1 Tag Gültigkeit, die bei jedem Laden neu erzeugt werden. Im Editor erzeugt
+  „Vorschau-Link teilen“ Links mit 1, 7 oder 30 Tagen Gültigkeit
+  (`POST /api/admin/posts/:id/versions/:vid/preview-link`).
+- Alle Datumsangaben in Europe/Berlin (`src/lib/format.ts`), unabhängig von
+  der Zeitzone des Servers.
 - `/tags/[slug]` – Posts, deren veröffentlichte Version den Tag hat.
 - Datum: „Veröffentlicht am“ = `posts.first_published_at`; zusätzlich
   „Aktualisiert am“ = `published_at` der veröffentlichten Version, wenn später.

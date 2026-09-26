@@ -1,10 +1,9 @@
 import type { TagRef } from "@/shared/api/tags";
 import type { RowView } from "@/shared/api/versions";
+import { formatDate } from "@/lib/format";
 import { PostContent } from "./post-content";
 
 // Ein Post mit Titel, Datum, Tags und Inhalt – öffentliche Seite und Vorschau.
-
-const date = new Intl.DateTimeFormat("de-DE", { dateStyle: "long" });
 
 export type PostArticleProps = {
   title: string;
@@ -24,10 +23,10 @@ export function PostArticle({ title, firstPublishedAt, publishedAt, tags, rows }
         <h1 className="text-4xl font-bold tracking-tight">{title}</h1>
         {firstPublishedAt && (
           <p className="text-sm text-zinc-500">
-            Veröffentlicht am <time dateTime={firstPublishedAt}>{date.format(new Date(firstPublishedAt))}</time>
+            Veröffentlicht am <time dateTime={firstPublishedAt}>{formatDate(firstPublishedAt)}</time>
             {updated && (
               <>
-                {" · "}Aktualisiert am <time dateTime={updated}>{date.format(new Date(updated))}</time>
+                {" · "}Aktualisiert am <time dateTime={updated}>{formatDate(updated)}</time>
               </>
             )}
           </p>

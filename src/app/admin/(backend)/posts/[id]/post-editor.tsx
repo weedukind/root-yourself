@@ -261,7 +261,7 @@ function VersionNode({
         {version.isPublished ? (
           <PublicPostLink slug={post.slug}>Auf der Website</PublicPostLink>
         ) : (
-          <PreviewLink postId={post.id} versionId={version.id} />
+          <PreviewLink path={version.previewPath} />
         )}
         <span className="text-xs text-zinc-500">geändert {formatDateTime(version.updatedAt)}</span>
       </div>

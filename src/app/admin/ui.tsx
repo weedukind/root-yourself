@@ -27,11 +27,11 @@ export function PublicPostLink({ slug, children = "Auf der Website ansehen" }: {
   );
 }
 
-/** Vorschau einer Version im Rahmen der Website, in einem neuen Fenster. */
-export function PreviewLink({ postId, versionId }: { postId: string; versionId: string }) {
+/** Vorschau einer Version im Rahmen der Website, in einem neuen Fenster (signierter Link). */
+export function PreviewLink({ path }: { path: string }) {
   return (
     <a
-      href={`/admin/posts/${postId}/versions/${versionId}/preview`}
+      href={path}
       target="_blank"
       rel="noopener noreferrer"
       className="text-sm text-zinc-700 underline hover:text-zinc-900"
@@ -41,9 +41,7 @@ export function PreviewLink({ postId, versionId }: { postId: string; versionId: 
   );
 }
 
-const dateTime = new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" });
-
-export const formatDateTime = (iso: string) => dateTime.format(new Date(iso));
+export { formatDateTime } from "@/lib/format";
 
 export function Badge({ tone, children }: { tone: "green" | "amber" | "zinc"; children: React.ReactNode }) {
   const colors = {

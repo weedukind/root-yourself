@@ -12,6 +12,7 @@ export default defineConfig({
   test: {
     globalSetup: ["./test/global-setup.ts"],
     env: {
+      PREVIEW_SECRET: "test-secret",
       TEST_DATABASE_URL:
         process.env.TEST_DATABASE_URL ?? "postgres://postgres:postgres@localhost:5433/rootyourself_test",
     },
