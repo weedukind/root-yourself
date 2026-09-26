@@ -12,7 +12,7 @@ import { conflict, notFound, ok, type Result } from "../result";
 type VersionRow = typeof versions.$inferSelect;
 
 /** Sperrt den Post und lädt die Version; beide müssen zusammengehören. */
-async function lockVersion(tx: Db, postId: string, versionId: string) {
+export async function lockVersion(tx: Db, postId: string, versionId: string) {
   const [post] = await tx.select().from(posts).where(eq(posts.id, postId)).for("update");
   if (!post) return undefined;
   const [version] = await tx
@@ -22,7 +22,7 @@ async function lockVersion(tx: Db, postId: string, versionId: string) {
   return version ? { post, version } : undefined;
 }
 
-async function hasChildren(tx: Db, versionId: string): Promise<boolean> {
+export async function hasChildren(tx: Db, versionId: string): Promise<boolean> {
   const [child] = await tx
     .select({ id: versions.id })
     .from(versions)

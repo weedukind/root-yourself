@@ -23,3 +23,9 @@ export function restrictViolation(error: unknown): boolean {
 export function foreignKeyViolation(error: unknown): boolean {
   return pgError(error)?.code === "23503";
 }
+
+/** Name der verletzten Foreign-Key-Regel, sonst undefined. */
+export function foreignKeyConstraint(error: unknown): string | undefined {
+  const pg = pgError(error);
+  return pg?.code === "23503" ? pg.constraint : undefined;
+}

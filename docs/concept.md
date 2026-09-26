@@ -161,6 +161,15 @@ In einer Transaktion:
    Abgleich).
 5. Verwaiste Elemente des Posts löschen, `versions.updated_at = now()`.
 
+- Ungültige Eingaben (fremde Element-IDs) werden geprüft, bevor ein Auto-Fork
+  entsteht – es bleibt also kein leerer Fork übrig. Unbekannte Tags oder
+  Bilder brechen die ganze Transaktion ab.
+- Grenzen: Grid und Zellen höchstens 12 × 12, `width ≤ grid_width` und
+  `height ≤ grid_height` (Prüfung in `saveVersionInput`), höchstens 100
+  Elemente pro Zelle, Markdown höchstens 50 000 Zeichen pro Text-Element.
+- „Unverändert“ vergleicht Typ, Medium und `data` inhaltlich (unabhängig von
+  der Reihenfolge der JSON-Schlüssel).
+
 ## Datenbankschema
 
 ### Diagramm
@@ -488,8 +497,8 @@ Alle Antworten sind JSON. Fehler haben immer die Form
 | `PATCH` | `/posts/:id` | Slug ändern `{ slug, updatedAt }` |
 | `DELETE` | `/posts/:id` | Post löschen |
 | `POST` | `/posts/:id/unpublish` | Veröffentlichung zurückziehen; liefert den Post |
-| `GET` | `/posts/:id/versions/:vid` | Version vollständig: Titel, Tags, Elemente |
-| `PUT` | `/posts/:id/versions/:vid` | Version speichern (bei veröffentlichtem Blatt: Auto-Fork) |
+| `GET` | `/posts/:id/versions/:vid` | Version vollständig: Titel, Tags, Rows → Zellen → Elemente (Bild-Elemente mit URL, Maßen und Alt-Text des Mediums) |
+| `PUT` | `/posts/:id/versions/:vid` | Version speichern; liefert `{ version, forkedFrom }`. Bei der veröffentlichten Version ist `version` der neue Fork und `forkedFrom` die ursprüngliche ID. Fehler: `version_conflict`, `version_frozen`, `element_unknown`, `tag_unknown`, `media_unknown` |
 | `DELETE` | `/posts/:id/versions/:vid` | Unveröffentlichtes Blatt löschen |
 | `POST` | `/posts/:id/versions/:vid/fork` | Aktiv forken; liefert die neue Version (`201`) |
 | `POST` | `/posts/:id/versions/:vid/publish` | Diese Version veröffentlichen (auch Rollback); liefert den Post |
