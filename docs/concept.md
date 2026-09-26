@@ -512,7 +512,7 @@ Alle Antworten sind JSON. Fehler haben immer die Form
 
 | Methode | Pfad | Zweck |
 | --- | --- | --- |
-| `GET` | `/api/posts?after=<cursor>` | Nächste zehn Teaser für die Startseite |
+| `GET` | `/api/posts?after=<cursor>` | Nächste zehn Teaser für die Startseite: `{ teasers, nextCursor }` |
 | `GET` | `/api/tags/:slug/posts?after=<cursor>` | Nächste zehn Teaser einer Tag-Seite |
 
 Die öffentlichen Seiten rendern auf dem Server und rufen die
@@ -558,6 +558,12 @@ src/
   - Zehn Posts pro Ladung, Keyset-Pagination über `(first_published_at, id)`.
   - Nachladen per IntersectionObserver; Fallback-Link `/?after=<cursor>`
     funktioniert auch ohne JavaScript.
+  - Umgesetzt: `src/server/public/feed.ts` (Teaser, Cursor), Anreißer über den
+    Markdown-Parser (`src/lib/excerpt.ts`: HTML-Blöcke und Bilder entfallen,
+    Absätze durch Leerzeichen getrennt, an einer Wortgrenze gekürzt; leere
+    Texte werden übersprungen). Cursor = Base64url von
+    `[first_published_at, id]`; ungültige Cursor: API `400`, Startseite zeigt
+    die erste Seite. Vorerst ohne Cache.
 - `/posts/[slug]` – veröffentlichte Version; bei unbekanntem Slug Suche in
   `post_slug_redirects` (308 auf den aktuellen Slug, nur solange der Post
   veröffentlicht ist); sonst 404. Umgesetzt in `src/app/(site)/posts/[slug]`
