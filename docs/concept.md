@@ -565,6 +565,13 @@ src/
 - Der Admin-Bereich verlinkt die öffentliche Seite (neues Fenster) im Abschnitt
   „Veröffentlichung“, bei der veröffentlichten Version im Versionsbaum und im
   Editor der veröffentlichten Version.
+- Vorschau jeder Version: `/admin/posts/[id]/versions/[vid]/preview` – im
+  Rahmen der Website (gemeinsame Komponenten `SiteFrame`, `PostArticle`,
+  `PostContent`) mit einem Vorschau-Balken; per Basic Auth geschützt, nicht
+  indexierbar. Zeigt den gespeicherten Stand. Verlinkt (neues Fenster) bei
+  jeder unveröffentlichten Version im Versionsbaum und im Editor.
+- Routengruppen: `(site)` für die Website, `admin/(backend)` für den
+  Admin-Rahmen, `admin/(preview)` für die Vorschau ohne Admin-Rahmen.
 - `/tags/[slug]` – Posts, deren veröffentlichte Version den Tag hat.
 - Datum: „Veröffentlicht am“ = `posts.first_published_at`; zusätzlich
   „Aktualisiert am“ = `published_at` der veröffentlichten Version, wenn später.
@@ -620,7 +627,10 @@ src/
     (`src/components/post-content.tsx`; Grid-Regeln in `globals.css`).
     Markdown über react-markdown – rohes HTML wird nicht gerendert.
   - Veröffentlichte Version: bearbeitbar, „Als neue Version speichern“ →
-    Auto-Fork, der Editor wechselt zur neuen Version. Eingefrorene Versionen:
+    Auto-Fork, der Editor wechselt zur neuen Version.
+  - Unveröffentlichte Version: Hinweis, welche Version die Website zeigt, und
+    „Veröffentlichen“ (bei ungespeicherten Änderungen „Speichern und
+    veröffentlichen“ – es wird nie ein alter Stand veröffentlicht). Eingefrorene Versionen:
     nur lesend, „Forken und bearbeiten“.
   - Anzeige ungespeicherter Änderungen, Warnung beim Verlassen, Änderungen
     verwerfen; bei `version_conflict` Neu laden anbieten.

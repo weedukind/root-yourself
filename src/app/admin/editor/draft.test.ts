@@ -19,6 +19,8 @@ const version: VersionDetail = {
   id: "v1",
   postId: "p1",
   postSlug: "wurzeln",
+  postPublishedVersion: null,
+  postFirstPublishedAt: null,
   number: 1,
   parentVersionId: null,
   title: "Wurzeln",

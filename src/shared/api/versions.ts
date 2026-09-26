@@ -102,6 +102,9 @@ export type VersionDetail = VersionSummary & {
   postId: string;
   /** Aktueller Slug des Posts – für den Link auf die öffentliche Seite. */
   postSlug: string;
+  /** Die Version, die die Website zeigt (auch wenn es eine andere ist). */
+  postPublishedVersion: { id: string; number: number } | null;
+  postFirstPublishedAt: string | null;
   tags: TagRef[];
   rows: RowView[];
 };

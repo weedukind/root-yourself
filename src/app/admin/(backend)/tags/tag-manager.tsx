@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ApiError } from "@/shared/api/errors";
 import type { Tag, TagWithUsage } from "@/shared/api/tags";
-import { api } from "../api-client";
-import { dangerButton, ErrorText, inputClass, primaryButton, secondaryButton } from "../ui";
+import { api } from "@/app/admin/api-client";
+import { dangerButton, ErrorText, inputClass, primaryButton, secondaryButton } from "@/app/admin/ui";
 
 export function TagManager() {
   const [tags, setTags] = useState<TagWithUsage[] | null>(null);

@@ -9,7 +9,7 @@ import type { VersionSummary } from "@/shared/api/posts";
 import type { TagWithUsage } from "@/shared/api/tags";
 import type { SaveVersionResult, VersionDetail } from "@/shared/api/versions";
 import { api } from "../api-client";
-import { Badge, ErrorText, inputClass, primaryButton, PublicPostLink, secondaryButton } from "../ui";
+import { Badge, ErrorText, inputClass, PreviewLink, primaryButton, PublicPostLink, secondaryButton } from "../ui";
 import { type Draft, fingerprint, fromVersion, toInput, toRowViews } from "./draft";
 import { LayoutEditor } from "./layout-editor";
 
@@ -89,6 +89,27 @@ export function VersionEditor({ postId, versionId }: { postId: string; versionId
     setNotice("Gespeichert.");
   }
 
+  /** Speichert ungespeicherte Änderungen zuerst, damit nie ein alter Stand veröffentlicht wird. */
+  async function publish() {
+    setBusy(true);
+    if (dirty) {
+      const saved = await api<SaveVersionResult>(`/posts/${postId}/versions/${versionId}`, {
+        method: "PUT",
+        body: toInput(draft, version.updatedAt),
+      });
+      if (!saved.ok) {
+        setBusy(false);
+        return setError(saved.error);
+      }
+    }
+    const result = await api<unknown>(`/posts/${postId}/versions/${versionId}/publish`, { method: "POST" });
+    setBusy(false);
+    if (!result.ok) return setError(result.error);
+    setError(null);
+    await load();
+    setNotice(`Version ${version.number} ist jetzt veröffentlicht.`);
+  }
+
   async function forkAndEdit() {
     setBusy(true);
     const result = await api<VersionSummary>(`/posts/${postId}/versions/${versionId}/fork`, { method: "POST" });
@@ -110,16 +131,18 @@ export function VersionEditor({ postId, versionId }: { postId: string; versionId
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-2xl font-semibold">Version {version.number}</h1>
           {version.isPublished ? (
-            <>
-              <Badge tone="green">veröffentlicht</Badge>
-              <PublicPostLink slug={version.postSlug} />
-            </>
+            <Badge tone="green">veröffentlicht</Badge>
           ) : version.isEditable ? (
             <Badge tone="amber">bearbeitbar</Badge>
           ) : (
             <Badge tone="zinc">eingefroren</Badge>
           )}
           {dirty && <Badge tone="amber">ungespeicherte Änderungen</Badge>}
+          {version.isPublished ? (
+            <PublicPostLink slug={version.postSlug} />
+          ) : (
+            <PreviewLink postId={postId} versionId={versionId} />
+          )}
         </div>
         <SavedNotice notice={notice} onClear={() => setNotice(null)} />
         {version.isPublished && (
@@ -127,6 +150,19 @@ export function VersionEditor({ postId, versionId }: { postId: string; versionId
             Diese Version ist veröffentlicht und bleibt unverändert. Beim Speichern entsteht eine neue Version mit deinen
             Änderungen.
           </p>
+        )}
+        {!version.isPublished && (
+          <div className="flex flex-wrap items-center gap-2 rounded bg-amber-50 p-2 text-sm text-amber-900">
+            <span>
+              {version.postPublishedVersion
+                ? `Nicht veröffentlicht – die Website zeigt Version ${version.postPublishedVersion.number}.`
+                : "Nicht veröffentlicht – der Post ist noch nicht öffentlich."}
+              {dirty && " Die Vorschau zeigt den gespeicherten Stand."}
+            </span>
+            <button type="button" className={primaryButton} onClick={publish} disabled={busy}>
+              {dirty ? "Speichern und veröffentlichen" : "Veröffentlichen"}
+            </button>
+          </div>
         )}
         {frozen && (
           <div className="flex flex-wrap items-center gap-2 rounded bg-zinc-100 p-2 text-sm">

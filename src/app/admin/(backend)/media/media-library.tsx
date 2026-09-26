@@ -11,8 +11,8 @@ import {
   type PreparedUpload,
 } from "@/shared/api/media";
 import type { TagRef, TagWithUsage } from "@/shared/api/tags";
-import { api, type ApiResult } from "../api-client";
-import { dangerButton, ErrorText, inputClass, primaryButton, secondaryButton } from "../ui";
+import { api, type ApiResult } from "@/app/admin/api-client";
+import { dangerButton, ErrorText, inputClass, primaryButton, secondaryButton } from "@/app/admin/ui";
 
 const ACCEPT = Object.keys(IMAGE_TYPES).join(",");
 

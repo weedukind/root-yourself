@@ -87,7 +87,16 @@ export async function getVersion(
       .map((c) => ({ id: c.id, width: c.width, height: c.height, elements: cellView(c.id) })),
   }));
 
-  return ok({ ...summary, postId, postSlug: post.value.slug, tags: tagRows.sort(byName), rows: rowViews });
+  const published = post.value.publishedVersion;
+  return ok({
+    ...summary,
+    postId,
+    postSlug: post.value.slug,
+    postPublishedVersion: published && { id: published.id, number: published.number },
+    postFirstPublishedAt: post.value.firstPublishedAt,
+    tags: tagRows.sort(byName),
+    rows: rowViews,
+  });
 }
 
 /** JSON mit sortierten Schlüsseln: jsonb liefert Objekte nicht in der gespeicherten Reihenfolge. */

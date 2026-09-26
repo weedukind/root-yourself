@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import type { ApiError } from "@/shared/api/errors";
 import type { PostDetail, PostSummary } from "@/shared/api/posts";
-import { api } from "../api-client";
-import { Badge, ErrorText, formatDateTime, inputClass, primaryButton } from "../ui";
+import { api } from "@/app/admin/api-client";
+import { Badge, ErrorText, formatDateTime, inputClass, primaryButton } from "@/app/admin/ui";
 
 export function PostList() {
   const [posts, setPosts] = useState<PostSummary[] | null>(null);
