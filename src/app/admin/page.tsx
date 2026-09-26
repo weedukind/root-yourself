@@ -6,6 +6,11 @@ export default function AdminPage() {
       <h1 className="text-2xl font-semibold">Admin</h1>
       <ul className="list-inside list-disc text-zinc-700">
         <li>
+          <Link href="/admin/posts" className="underline">
+            Posts
+          </Link>
+        </li>
+        <li>
           <Link href="/admin/media" className="underline">
             Mediathek
           </Link>

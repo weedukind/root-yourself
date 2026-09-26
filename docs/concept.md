@@ -478,9 +478,9 @@ Alle Antworten sind JSON. Fehler haben immer die Form
 | `GET` | `/media` | Mediathek mit Tags und Nutzung, neueste zuerst; Filter `?tag=<id>` |
 | `PATCH` | `/media/:id` | Alt-Text und/oder Tags ändern `{ alt?, tagIds?, updatedAt }`; `tagIds` ersetzt alle Tags |
 | `DELETE` | `/media/:id` | Löschen (`409`, wenn verwendet) |
-| `GET` | `/posts` | Alle Posts mit veröffentlichter Version und Blättern |
-| `POST` | `/posts` | Post mit Version 1 anlegen `{ title }` |
-| `GET` | `/posts/:id` | Post mit Versionsbaum (ID, Nummer, Eltern, Titel, veröffentlicht, Blatt, `updatedAt`) |
+| `GET` | `/posts` | Alle Posts, zuletzt geänderte zuerst: Titel (der veröffentlichten, sonst der zuletzt geänderten Version), veröffentlichte Version, Anzahl Versionen und bearbeitbarer Versionen |
+| `POST` | `/posts` | Post mit Version 1 anlegen `{ title, slug? }`; ohne Slug aus dem Titel erzeugt. Übernimmt der Slug eine alte Weiterleitung, entfällt diese |
+| `GET` | `/posts/:id` | Post mit Versionen (ID, Nummer, Eltern, Titel, veröffentlicht, Blatt, bearbeitbar, `updatedAt`) und früheren Slugs |
 | `PATCH` | `/posts/:id` | Slug ändern `{ slug, updatedAt }` |
 | `DELETE` | `/posts/:id` | Post löschen |
 | `POST` | `/posts/:id/unpublish` | Veröffentlichung zurückziehen |
@@ -611,7 +611,14 @@ src/
    Vitest mit Testdatenbank, Schema-Migration auf das Versionsmodell.
 2. Tags: Service, API, Admin-Seite.
 3. Mediathek: RustFS lokal, Presigned Upload, Service, API, Admin-Seite.
-4. Posts und Versionen: Anlegen, Speichern mit Copy-on-Write und Auto-Fork,
-   Forken, Veröffentlichen, Löschen, Slug-Weiterleitung; API; Editor.
+4. Posts und Versionen, in Teilschritten:
+   - 4a: Posts anlegen, auflisten, löschen; Slug ändern mit Weiterleitung;
+     Admin-Liste und Detailseite.
+   - 4b: Versionsbaum anzeigen; forken, veröffentlichen (auch Rollback),
+     zurückziehen, unveröffentlichte Blätter löschen.
+   - 4c: Version speichern (Titel, Tags, Layout) mit Copy-on-Write,
+     Auto-Fork, eingefrorenen Versionen, Überschreib-Schutz, Aufräumen.
+   - 4d: Editor für Rows, Zellen und Elemente, Bildauswahl aus der
+     Mediathek, Vorschau.
 5. Öffentliche Abfragen, Seiten und Cache-Invalidierung.
 6. Später: Volltextsuche mit Algolia.

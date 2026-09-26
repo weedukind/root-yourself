@@ -17,3 +17,16 @@ export function ErrorText({ error }: { error: ApiError | null }) {
     </p>
   );
 }
+
+const dateTime = new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" });
+
+export const formatDateTime = (iso: string) => dateTime.format(new Date(iso));
+
+export function Badge({ tone, children }: { tone: "green" | "amber" | "zinc"; children: React.ReactNode }) {
+  const colors = {
+    green: "bg-green-100 text-green-800",
+    amber: "bg-amber-100 text-amber-800",
+    zinc: "bg-zinc-100 text-zinc-700",
+  };
+  return <span className={`rounded px-2 py-0.5 text-xs font-medium ${colors[tone]}`}>{children}</span>;
+}
