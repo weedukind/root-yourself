@@ -84,6 +84,16 @@ function CreateTagForm({ onCreated }: { onCreated: () => Promise<void> }) {
 
 type Mode = "view" | "edit" | "confirm-delete";
 
+/** „3 Posts (auch aus älteren Versionen) und 2 Bildern“ – leer, wenn der Tag unbenutzt ist. */
+function usageText(tag: TagWithUsage): string {
+  const parts = [];
+  if (tag.postCount > 0) {
+    parts.push(`${tag.postCount} ${tag.postCount === 1 ? "Post" : "Posts"} (auch aus älteren Versionen)`);
+  }
+  if (tag.mediaCount > 0) parts.push(`${tag.mediaCount} ${tag.mediaCount === 1 ? "Bild" : "Bildern"}`);
+  return parts.join(" und ");
+}
+
 function TagItem({ tag, onChanged }: { tag: TagWithUsage; onChanged: () => Promise<void> }) {
   const [mode, setMode] = useState<Mode>("view");
   const [name, setName] = useState(tag.name);
@@ -165,13 +175,14 @@ function TagItem({ tag, onChanged }: { tag: TagWithUsage; onChanged: () => Promi
       </div>
       <p className="text-sm text-zinc-600">
         {tag.postCount} {tag.postCount === 1 ? "Post" : "Posts"}
-        {tag.postCount > 0 && `, ${tag.publishedPostCount} veröffentlicht`}
+        {tag.postCount > 0 && ` (${tag.publishedPostCount} veröffentlicht)`}, {tag.mediaCount}{" "}
+        {tag.mediaCount === 1 ? "Bild" : "Bilder"}
       </p>
       {mode === "confirm-delete" ? (
         <div className="flex w-full flex-wrap items-center gap-2">
           <p className="text-sm">
             „{tag.name}“ löschen?
-            {tag.postCount > 0 && ` Der Tag wird aus ${tag.postCount} ${tag.postCount === 1 ? "Post" : "Posts"} entfernt, auch aus älteren Versionen.`}
+            {usageText(tag) && ` Der Tag wird entfernt aus ${usageText(tag)}.`}
           </p>
           <button type="button" className={dangerButton} onClick={remove} disabled={busy}>
             Endgültig löschen

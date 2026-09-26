@@ -24,8 +24,12 @@ export type Tag = {
   updatedAt: string;
 };
 
+/** Kurzform, wenn ein Tag an etwas anderem hängt (Medium, Version). */
+export type TagRef = Pick<Tag, "id" | "name" | "slug">;
+
 export type TagWithUsage = Tag & {
   // Posts, in denen irgendeine Version den Tag nutzt / deren veröffentlichte Version ihn nutzt.
   postCount: number;
   publishedPostCount: number;
+  mediaCount: number;
 };

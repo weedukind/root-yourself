@@ -18,3 +18,8 @@ export function uniqueViolation(error: unknown): string | undefined {
 export function restrictViolation(error: unknown): boolean {
   return pgError(error)?.code === "23001";
 }
+
+/** true, wenn ein Verweis auf einen nicht vorhandenen Datensatz zeigt. */
+export function foreignKeyViolation(error: unknown): boolean {
+  return pgError(error)?.code === "23503";
+}

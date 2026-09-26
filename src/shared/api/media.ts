@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { TagRef } from "./tags";
 
 // Vertrag der Mediathek-Endpunkte unter /api/admin/media.
 
@@ -36,11 +37,21 @@ export const createMediaInput = z.object({
   alt: alt.default(""),
 });
 
-export const updateMediaInput = z.object({
-  alt,
-  // Überschreib-Schutz: Stand, auf dem die Änderung beruht.
-  updatedAt: z.iso.datetime(),
-});
+export const updateMediaInput = z
+  .object({
+    alt: alt.optional(),
+    // Ersetzt die Tags des Bildes vollständig.
+    tagIds: z
+      .array(z.uuid())
+      .max(50)
+      .refine((ids) => new Set(ids).size === ids.length, "Tags doppelt angegeben")
+      .optional(),
+    // Überschreib-Schutz: Stand, auf dem die Änderung beruht.
+    updatedAt: z.iso.datetime(),
+  })
+  .refine((input) => input.alt !== undefined || input.tagIds !== undefined, "Nichts zu ändern");
+
+export const listMediaQuery = z.object({ tag: z.uuid().optional() });
 
 export type PrepareUploadInput = z.infer<typeof prepareUploadInput>;
 export type CreateMediaInput = z.input<typeof createMediaInput>;
@@ -63,6 +74,7 @@ export type Media = {
   width: number;
   height: number;
   alt: string;
+  tags: TagRef[];
   createdAt: string;
   updatedAt: string;
 };

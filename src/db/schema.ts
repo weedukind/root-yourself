@@ -47,6 +47,21 @@ export const media = pgTable("media", {
   ...timestamps,
 });
 
+// Tags gelten für Posts (pro Version, siehe version_tags) und für Medien. Medien sind nicht
+// versioniert, daher eine einfache Zuordnung.
+export const mediaTags = pgTable(
+  "media_tags",
+  {
+    mediaId: uuid("media_id")
+      .notNull()
+      .references(() => media.id, { onDelete: "cascade" }),
+    tagId: uuid("tag_id")
+      .notNull()
+      .references(() => tags.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.mediaId, t.tagId] }), index("media_tags_tag_idx").on(t.tagId)],
+);
+
 export const posts = pgTable(
   "posts",
   {

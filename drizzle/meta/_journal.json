@@ -15,6 +15,13 @@
       "when": 1790285268884,
       "tag": "0001_defer_cell_elements_element_fk",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790318900251,
+      "tag": "0002_media_tags",
+      "breakpoints": true
     }
   ]
 }

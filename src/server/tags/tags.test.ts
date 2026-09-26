@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { posts, versions, versionTags } from "@/db/schema";
+import { media, mediaTags, posts, versions, versionTags } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { withRollback } from "../../../test/db";
 import { createTag, deleteTag, listTags, updateTag } from "./tags";
@@ -102,7 +102,7 @@ describe("deleteTag", () => {
 });
 
 describe("listTags", () => {
-  it("zählt Posts insgesamt und veröffentlichte Posts, sortiert nach Name", () =>
+  it("zählt Posts, veröffentlichte Posts und Medien, sortiert nach Name", () =>
     withRollback(async (db) => {
       const wurzeln = await create(db, "Wurzeln");
       await create(db, "Äste");
@@ -125,10 +125,19 @@ describe("listTags", () => {
       const [v3] = await db.insert(versions).values({ postId: p2.id, number: 1, title: "3" }).returning();
       await db.insert(versionTags).values({ versionId: v3.id, tagId: wurzeln.id });
 
+      // Zwei Bilder mit dem Tag.
+      const images = await db
+        .insert(media)
+        .values(
+          ["a", "b"].map((k) => ({ storageKey: k, filename: k, mimeType: "image/png", sizeBytes: 1, width: 1, height: 1 })),
+        )
+        .returning();
+      await db.insert(mediaTags).values(images.map((m) => ({ mediaId: m.id, tagId: wurzeln.id })));
+
       const list = await listTags(db);
-      expect(list.map((t) => [t.name, t.postCount, t.publishedPostCount])).toEqual([
-        ["Äste", 0, 0],
-        ["Wurzeln", 2, 1],
+      expect(list.map((t) => [t.name, t.postCount, t.publishedPostCount, t.mediaCount])).toEqual([
+        ["Äste", 0, 0, 0],
+        ["Wurzeln", 2, 1, 2],
       ]);
     }));
 });

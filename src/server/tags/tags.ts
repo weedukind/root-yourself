@@ -1,14 +1,13 @@
 import { and, countDistinct, eq, sql } from "drizzle-orm";
-import { posts, tags, versions, versionTags } from "@/db/schema";
+import { mediaTags, posts, tags, versions, versionTags } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { isValidSlug, slugify } from "@/lib/slug";
+import { byName } from "@/lib/sort";
 import type { CreateTagInput, Tag, TagWithUsage, UpdateTagInput } from "@/shared/api/tags";
 import { uniqueViolation } from "../db-errors";
 import { conflict, invalid, notFound, ok, type Result } from "../result";
 
 type TagRow = typeof tags.$inferSelect;
-
-const germanCollator = new Intl.Collator("de");
 
 const toTag = (row: TagRow): Tag => ({
   id: row.id,
@@ -35,17 +34,18 @@ export async function listTags(db: Db): Promise<TagWithUsage[]> {
       tag: tags,
       postCount: countDistinct(versions.postId),
       publishedPostCount: countDistinct(posts.id),
+      mediaCount: countDistinct(mediaTags.mediaId),
     })
     .from(tags)
     .leftJoin(versionTags, eq(versionTags.tagId, tags.id))
     .leftJoin(versions, eq(versions.id, versionTags.versionId))
     .leftJoin(posts, eq(posts.publishedVersionId, versionTags.versionId))
+    .leftJoin(mediaTags, eq(mediaTags.tagId, tags.id))
     .groupBy(tags.id);
 
-  // Deutsch sortieren (Ä bei A): Die Sortierung der Datenbank hängt von deren Collation ab.
   return rows
-    .map((r) => ({ ...toTag(r.tag), postCount: r.postCount, publishedPostCount: r.publishedPostCount }))
-    .sort((a, b) => germanCollator.compare(a.name, b.name));
+    .map(({ tag, ...usage }) => ({ ...toTag(tag), ...usage }))
+    .sort(byName);
 }
 
 export async function createTag(db: Db, input: CreateTagInput): Promise<Result<Tag>> {
@@ -89,7 +89,7 @@ export async function updateTag(db: Db, id: string, input: UpdateTagInput): Prom
 }
 
 export async function deleteTag(db: Db, id: string): Promise<Result<null>> {
-  // Entfernt den Tag aus allen Versionen, auch eingefrorenen (ON DELETE CASCADE).
+  // Entfernt den Tag aus allen Versionen, auch eingefrorenen, und aus allen Medien (ON DELETE CASCADE).
   const [row] = await db.delete(tags).where(eq(tags.id, id)).returning({ id: tags.id });
   return row ? ok(null) : notFound("Tag");
 }

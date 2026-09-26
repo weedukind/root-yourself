@@ -1,6 +1,7 @@
-import { and, countDistinct, desc, eq, sql } from "drizzle-orm";
-import { cellElements, elements, media } from "@/db/schema";
+import { and, countDistinct, desc, eq, inArray, sql } from "drizzle-orm";
+import { cellElements, elements, media, mediaTags, tags } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { byName } from "@/lib/sort";
 import {
   IMAGE_TYPES,
   MAX_UPLOAD_BYTES,
@@ -11,7 +12,8 @@ import {
   type PrepareUploadInput,
   type UpdateMediaInput,
 } from "@/shared/api/media";
-import { restrictViolation, uniqueViolation } from "../db-errors";
+import type { TagRef } from "@/shared/api/tags";
+import { foreignKeyViolation, restrictViolation, uniqueViolation } from "../db-errors";
 import { conflict, invalid, notFound, ok, type Result } from "../result";
 import type { MediaStorage } from "./storage";
 
@@ -27,7 +29,7 @@ const KEY_PATTERN = new RegExp(
   `^\\d{4}/\\d{2}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(${Object.values(IMAGE_TYPES).join("|")})$`,
 );
 
-const toMedia = (row: MediaRow, storage: MediaStorage): Media => ({
+const toMedia = (row: MediaRow, storage: MediaStorage, tagRefs: TagRef[] = []): Media => ({
   id: row.id,
   key: row.storageKey,
   url: storage.publicUrl(row.storageKey),
@@ -37,9 +39,26 @@ const toMedia = (row: MediaRow, storage: MediaStorage): Media => ({
   width: row.width,
   height: row.height,
   alt: row.alt,
+  tags: tagRefs,
   createdAt: row.createdAt.toISOString(),
   updatedAt: row.updatedAt.toISOString(),
 });
+
+/** Tags je Medium, deutsch sortiert. */
+async function loadTags(db: Db, mediaIds: string[]): Promise<Map<string, TagRef[]>> {
+  const byMedia = new Map<string, TagRef[]>();
+  if (mediaIds.length === 0) return byMedia;
+  const rows = await db
+    .select({ mediaId: mediaTags.mediaId, id: tags.id, name: tags.name, slug: tags.slug })
+    .from(mediaTags)
+    .innerJoin(tags, eq(tags.id, mediaTags.tagId))
+    .where(inArray(mediaTags.mediaId, mediaIds));
+  for (const { mediaId, ...tag } of rows) {
+    byMedia.set(mediaId, [...(byMedia.get(mediaId) ?? []), tag]);
+  }
+  for (const list of byMedia.values()) list.sort(byName);
+  return byMedia;
+}
 
 export async function prepareUpload(
   storage: MediaStorage,
@@ -92,16 +111,29 @@ export async function confirmUpload(
   }
 }
 
-export async function listMedia(db: Db, storage: MediaStorage): Promise<MediaWithUsage[]> {
+export async function listMedia(
+  db: Db,
+  storage: MediaStorage,
+  filter: { tagId?: string } = {},
+): Promise<MediaWithUsage[]> {
   const rows = await db
     .select({ media, versionCount: countDistinct(cellElements.versionId) })
     .from(media)
     .leftJoin(elements, eq(elements.mediaId, media.id))
     .leftJoin(cellElements, eq(cellElements.elementId, elements.id))
+    .where(
+      filter.tagId
+        ? inArray(media.id, db.select({ id: mediaTags.mediaId }).from(mediaTags).where(eq(mediaTags.tagId, filter.tagId)))
+        : undefined,
+    )
     .groupBy(media.id)
     .orderBy(desc(media.createdAt), desc(media.id));
 
-  return rows.map((r) => ({ ...toMedia(r.media, storage), versionCount: r.versionCount }));
+  const tagsByMedia = await loadTags(db, rows.map((r) => r.media.id));
+  return rows.map((r) => ({
+    ...toMedia(r.media, storage, tagsByMedia.get(r.media.id)),
+    versionCount: r.versionCount,
+  }));
 }
 
 export async function updateMedia(
@@ -110,13 +142,29 @@ export async function updateMedia(
   id: string,
   input: UpdateMediaInput,
 ): Promise<Result<Media>> {
-  // clock_timestamp() statt now(): now() ist innerhalb einer Transaktion konstant.
-  const [row] = await db
-    .update(media)
-    .set({ alt: input.alt, updatedAt: sql`clock_timestamp()` })
-    .where(and(eq(media.id, id), eq(media.updatedAt, new Date(input.updatedAt))))
-    .returning();
-  if (row) return ok(toMedia(row, storage));
+  let row: MediaRow | undefined;
+  try {
+    // Alt-Text und Tags gemeinsam oder gar nicht; zugleich Savepoint, falls ein Tag unbekannt ist.
+    row = await db.transaction(async (tx) => {
+      // clock_timestamp() statt now(): now() ist innerhalb einer Transaktion konstant.
+      const [updated] = await tx
+        .update(media)
+        .set({ alt: input.alt, updatedAt: sql`clock_timestamp()` })
+        .where(and(eq(media.id, id), eq(media.updatedAt, new Date(input.updatedAt))))
+        .returning();
+      if (updated && input.tagIds) {
+        await tx.delete(mediaTags).where(eq(mediaTags.mediaId, id));
+        if (input.tagIds.length > 0) {
+          await tx.insert(mediaTags).values(input.tagIds.map((tagId) => ({ mediaId: id, tagId })));
+        }
+      }
+      return updated;
+    });
+  } catch (error) {
+    if (foreignKeyViolation(error)) return invalid("tag_unknown", "Ein angegebener Tag existiert nicht", "tagIds");
+    throw error;
+  }
+  if (row) return ok(toMedia(row, storage, (await loadTags(db, [id])).get(id)));
 
   const [exists] = await db.select({ id: media.id }).from(media).where(eq(media.id, id));
   return exists ? conflict("stale", "Das Bild wurde inzwischen geändert. Bitte neu laden.") : notFound("Bild");

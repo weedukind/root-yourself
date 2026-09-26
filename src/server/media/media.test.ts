@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cellElements, cells, elements, posts, rows, versions } from "@/db/schema";
+import { cellElements, cells, elements, posts, rows, tags, versions } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { withRollback } from "../../../test/db";
 import { memoryStorage } from "../../../test/memory-storage";
@@ -135,5 +135,66 @@ describe("deleteMedia", () => {
       await useInVersion(db, medium.id);
       expect(await deleteMedia(db, mem.storage, medium.id)).toMatchObject({ ok: false, error: { code: "media_in_use" } });
       expect(mem.objects.has(medium.key)).toBe(true);
+    }));
+});
+
+describe("Tags an Medien", () => {
+  async function tag(db: Db, name: string) {
+    const [row] = await db.insert(tags).values({ name, slug: name.toLowerCase() }).returning();
+    return row.id;
+  }
+
+  it("setzt und ersetzt die Tags eines Bildes, deutsch sortiert", () =>
+    withRollback(async (db) => {
+      const mem = memoryStorage();
+      const medium = await uploaded(db, mem);
+      const [wurzeln, aeste, blaetter] = [await tag(db, "Wurzeln"), await tag(db, "Äste"), await tag(db, "Blätter")];
+
+      const first = await updateMedia(db, mem.storage, medium.id, { tagIds: [wurzeln, aeste], updatedAt: medium.updatedAt });
+      expect(first.ok && first.value.tags.map((t) => t.name)).toEqual(["Äste", "Wurzeln"]);
+      if (!first.ok) return;
+
+      const second = await updateMedia(db, mem.storage, medium.id, { tagIds: [blaetter], updatedAt: first.value.updatedAt });
+      expect(second.ok && second.value.tags.map((t) => t.name)).toEqual(["Blätter"]);
+      expect(second.ok && second.value.alt).toBe("");
+    }));
+
+  it("lehnt unbekannte Tags ab und lässt das Bild unverändert", () =>
+    withRollback(async (db) => {
+      const mem = memoryStorage();
+      const medium = await uploaded(db, mem);
+      const result = await updateMedia(db, mem.storage, medium.id, {
+        alt: "Neu",
+        tagIds: [crypto.randomUUID()],
+        updatedAt: medium.updatedAt,
+      });
+      expect(result).toMatchObject({ ok: false, error: { code: "tag_unknown", field: "tagIds" } });
+      const [unchanged] = await listMedia(db, mem.storage);
+      expect(unchanged).toMatchObject({ alt: "", updatedAt: medium.updatedAt, tags: [] });
+    }));
+
+  it("filtert die Mediathek nach Tag", () =>
+    withRollback(async (db) => {
+      const mem = memoryStorage();
+      const tagged = await uploaded(db, mem);
+      await uploaded(db, mem);
+      const wurzeln = await tag(db, "Wurzeln");
+      await updateMedia(db, mem.storage, tagged.id, { tagIds: [wurzeln], updatedAt: tagged.updatedAt });
+
+      expect(await listMedia(db, mem.storage)).toHaveLength(2);
+      const filtered = await listMedia(db, mem.storage, { tagId: wurzeln });
+      expect(filtered.map((m) => m.id)).toEqual([tagged.id]);
+      expect(filtered[0].tags.map((t) => t.name)).toEqual(["Wurzeln"]);
+    }));
+
+  it("ein gelöschter Tag verschwindet aus den Medien", () =>
+    withRollback(async (db) => {
+      const mem = memoryStorage();
+      const medium = await uploaded(db, mem);
+      const wurzeln = await tag(db, "Wurzeln");
+      await updateMedia(db, mem.storage, medium.id, { tagIds: [wurzeln], updatedAt: medium.updatedAt });
+      await db.delete(tags);
+      const [after] = await listMedia(db, mem.storage);
+      expect(after.tags).toEqual([]);
     }));
 });

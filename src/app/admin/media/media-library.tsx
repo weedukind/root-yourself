@@ -10,6 +10,7 @@ import {
   type MediaWithUsage,
   type PreparedUpload,
 } from "@/shared/api/media";
+import type { TagRef, TagWithUsage } from "@/shared/api/tags";
 import { api, type ApiResult } from "../api-client";
 import { dangerButton, ErrorText, inputClass, primaryButton, secondaryButton } from "../ui";
 
@@ -70,35 +71,59 @@ async function uploadFile(file: File): Promise<ApiResult<Media>> {
 
 export function MediaLibrary() {
   const [items, setItems] = useState<MediaWithUsage[] | null>(null);
+  const [allTags, setAllTags] = useState<TagWithUsage[]>([]);
+  const [filterTag, setFilterTag] = useState("");
   const [loadError, setLoadError] = useState<ApiError | null>(null);
 
   const load = useCallback(async () => {
-    const result = await api<MediaWithUsage[]>("/media");
-    if (result.ok) {
-      setItems(result.value);
+    const [mediaResult, tagsResult] = await Promise.all([
+      api<MediaWithUsage[]>(filterTag ? `/media?tag=${filterTag}` : "/media"),
+      api<TagWithUsage[]>("/tags"),
+    ]);
+    if (tagsResult.ok) setAllTags(tagsResult.value);
+    if (mediaResult.ok) {
+      setItems(mediaResult.value);
       setLoadError(null);
     } else {
-      setLoadError(result.error);
+      setLoadError(mediaResult.error);
     }
-  }, []);
+  }, [filterTag]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initiales Laden der Liste
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Liste laden, auch nach Filterwechsel
     void load();
   }, [load]);
 
   return (
     <div className="space-y-6">
       <Uploader onUploaded={load} />
+      <div className="flex items-center gap-2">
+        <label htmlFor="filter-tag" className="text-sm font-medium">
+          Filter
+        </label>
+        <select
+          id="filter-tag"
+          className={inputClass}
+          value={filterTag}
+          onChange={(e) => setFilterTag(e.target.value)}
+        >
+          <option value="">Alle Bilder</option>
+          {allTags.map((tag) => (
+            <option key={tag.id} value={tag.id}>
+              {tag.name} ({tag.mediaCount})
+            </option>
+          ))}
+        </select>
+      </div>
       <ErrorText error={loadError} />
       {items === null ? (
         !loadError && <p className="text-sm text-zinc-500">Lädt …</p>
       ) : items.length === 0 ? (
-        <p className="text-sm text-zinc-500">Noch keine Bilder.</p>
+        <p className="text-sm text-zinc-500">{filterTag ? "Keine Bilder mit diesem Tag." : "Noch keine Bilder."}</p>
       ) : (
         <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((item) => (
-            <MediaCard key={item.id} item={item} onChanged={load} />
+            <MediaCard key={item.id} item={item} allTags={allTags} onChanged={load} />
           ))}
         </ul>
       )}
@@ -159,7 +184,15 @@ function Uploader({ onUploaded }: { onUploaded: () => Promise<void> }) {
   );
 }
 
-function MediaCard({ item, onChanged }: { item: MediaWithUsage; onChanged: () => Promise<void> }) {
+function MediaCard({
+  item,
+  allTags,
+  onChanged,
+}: {
+  item: MediaWithUsage;
+  allTags: TagRef[];
+  onChanged: () => Promise<void>;
+}) {
   const [alt, setAlt] = useState(item.alt);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
@@ -200,6 +233,7 @@ function MediaCard({ item, onChanged }: { item: MediaWithUsage; onChanged: () =>
             {inUse ? `in ${item.versionCount} ${item.versionCount === 1 ? "Version" : "Versionen"}` : "nicht verwendet"}
           </p>
         </div>
+        <MediaTags item={item} allTags={allTags} onChanged={onChanged} onError={setError} />
         <form onSubmit={saveAlt} className="flex gap-2">
           <label className="sr-only" htmlFor={`alt-${item.id}`}>
             Alt-Text
@@ -244,5 +278,89 @@ function MediaCard({ item, onChanged }: { item: MediaWithUsage; onChanged: () =>
         )}
       </div>
     </li>
+  );
+}
+
+function MediaTags({
+  item,
+  allTags,
+  onChanged,
+  onError,
+}: {
+  item: MediaWithUsage;
+  allTags: TagRef[];
+  onChanged: () => Promise<void>;
+  onError: (error: ApiError | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+
+  function startEdit() {
+    setSelected(new Set(item.tags.map((t) => t.id)));
+    setEditing(true);
+  }
+
+  function toggle(id: string) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function save() {
+    setBusy(true);
+    const result = await api<Media>(`/media/${item.id}`, {
+      method: "PATCH",
+      body: { tagIds: [...selected], updatedAt: item.updatedAt },
+    });
+    setBusy(false);
+    if (!result.ok) return onError(result.error);
+    onError(null);
+    setEditing(false);
+    await onChanged();
+  }
+
+  if (!editing) {
+    return (
+      <div className="flex flex-wrap items-center gap-1">
+        {item.tags.map((tag) => (
+          <span key={tag.id} className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700">
+            {tag.name}
+          </span>
+        ))}
+        <button type="button" className="text-xs text-zinc-500 underline hover:text-zinc-900" onClick={startEdit}>
+          {item.tags.length ? "Tags ändern" : "Tags zuordnen"}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <fieldset className="space-y-2 rounded border border-zinc-200 p-2">
+      <legend className="px-1 text-xs font-medium">Tags</legend>
+      {allTags.length === 0 ? (
+        <p className="text-xs text-zinc-500">Noch keine Tags angelegt.</p>
+      ) : (
+        <div className="flex flex-wrap gap-x-3 gap-y-1">
+          {allTags.map((tag) => (
+            <label key={tag.id} className="flex items-center gap-1 text-sm">
+              <input type="checkbox" checked={selected.has(tag.id)} onChange={() => toggle(tag.id)} />
+              {tag.name}
+            </label>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <button type="button" className={primaryButton} onClick={save} disabled={busy}>
+          Übernehmen
+        </button>
+        <button type="button" className={secondaryButton} onClick={() => setEditing(false)}>
+          Abbrechen
+        </button>
+      </div>
+    </fieldset>
   );
 }

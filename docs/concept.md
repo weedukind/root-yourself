@@ -49,7 +49,8 @@ Next.js-App. Es gibt genau eine Person, die Posts schreibt.
   untereinander. Typen: `heading`, `text` (Markdown), `image` (verweist auf
   die Mediathek); weitere folgen. Mehrere Versionen desselben Posts können
   dasselbe Element verwenden (Copy-on-Write).
-- **Tag**: Name und Slug. Tags sind Metadaten und gelten pro Version.
+- **Tag**: Name und Slug. Gemeinsam für Posts und Medien: an Posts als
+  Metadaten pro Version, an Medien zum Ordnen der Mediathek (nicht versioniert).
 - **Medium**: Bild in R2, verwaltet über die Mediathek.
 
 ## Seitenlayout
@@ -167,6 +168,8 @@ erDiagram
     versions |o--o{ versions : "parent_version_id (Fork-Baum)"
     versions ||--o{ version_tags : ""
     tags ||--o{ version_tags : ""
+    tags ||--o{ media_tags : ""
+    media ||--o{ media_tags : ""
     versions ||--o{ rows : ""
     rows ||--o{ cells : ""
     cells ||--o{ cell_elements : ""
@@ -195,6 +198,10 @@ erDiagram
     }
     version_tags {
         uuid version_id PK,FK
+        uuid tag_id PK,FK
+    }
+    media_tags {
+        uuid media_id PK,FK
         uuid tag_id PK,FK
     }
     tags {
@@ -260,7 +267,7 @@ Lesehilfe: `||` genau eins, `|o` null oder eins, `|{` eins oder mehrere,
 - **Pro Version kopiert** beim Forken: `rows`, `cells`, `cell_elements`,
   `version_tags`.
 - **Zwischen Versionen geteilt** (Copy-on-Write): `elements`.
-- **Global**: `tags`, `media`.
+- **Global**: `tags`, `media`, `media_tags`.
 
 ### SQL
 
@@ -285,6 +292,14 @@ CREATE TABLE media (
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now()
 );
+
+-- Tags an Medien (nicht versioniert).
+CREATE TABLE media_tags (
+  media_id  uuid NOT NULL REFERENCES media (id) ON DELETE CASCADE,
+  tag_id    uuid NOT NULL REFERENCES tags (id)  ON DELETE CASCADE,
+  PRIMARY KEY (media_id, tag_id)
+);
+CREATE INDEX media_tags_tag_idx ON media_tags (tag_id);
 
 CREATE TABLE posts (
   id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -429,7 +444,7 @@ er eine eigene, optionale FK-Spalte nach dem Muster von `media_id`.
 | Aktion | Verhalten |
 | --- | --- |
 | Post löschen | Versionen, Verknüpfungen, Elemente, Tag-Zuordnungen und Weiterleitungen werden mitgelöscht. |
-| Tag löschen | Nur manuell im Admin; wird aus allen Versionen entfernt (CASCADE), auch aus eingefrorenen. |
+| Tag löschen | Nur manuell im Admin; wird aus allen Versionen (auch eingefrorenen) und allen Medien entfernt (CASCADE). |
 | Medium löschen | Blockiert, solange irgendein Element es verwendet – auch in eingefrorenen Versionen. |
 | Slug ändern (gilt für alle Versionen) | War der Post schon einmal veröffentlicht, Eintrag in `post_slug_redirects`, dauerhafte Weiterleitung (308) auf den aktuellen Slug, keine Ketten. Überschreib-Schutz über `posts.updated_at`. |
 | Neuer Slug entspricht einem alten Slug | Der Weiterleitungseintrag wird in derselben Transaktion gelöscht. |
@@ -454,14 +469,14 @@ Alle Antworten sind JSON. Fehler haben immer die Form
 
 | Methode | Pfad | Zweck |
 | --- | --- | --- |
-| `GET` | `/tags` | Liste, deutsch sortiert, mit `postCount` (Posts, in denen irgendeine Version den Tag nutzt) und `publishedPostCount` (Posts, deren veröffentlichte Version ihn nutzt) |
+| `GET` | `/tags` | Liste, deutsch sortiert, mit `postCount` (Posts, in denen irgendeine Version den Tag nutzt), `publishedPostCount` (Posts, deren veröffentlichte Version ihn nutzt) und `mediaCount` |
 | `POST` | `/tags` | Anlegen `{ name }`, Slug wird erzeugt |
 | `PATCH` | `/tags/:id` | Umbenennen `{ name?, slug?, updatedAt }`; der Slug bleibt beim Umbenennen erhalten und ändert sich nur ausdrücklich |
 | `DELETE` | `/tags/:id` | Löschen |
 | `POST` | `/media/uploads` | Upload vorbereiten `{ filename, mimeType, size }` → `{ uploadUrl, key }` |
 | `POST` | `/media` | Upload bestätigen `{ key, filename, width, height, alt }` |
-| `GET` | `/media` | Mediathek |
-| `PATCH` | `/media/:id` | Alt-Text ändern `{ alt, updatedAt }` |
+| `GET` | `/media` | Mediathek mit Tags und Nutzung, neueste zuerst; Filter `?tag=<id>` |
+| `PATCH` | `/media/:id` | Alt-Text und/oder Tags ändern `{ alt?, tagIds?, updatedAt }`; `tagIds` ersetzt alle Tags |
 | `DELETE` | `/media/:id` | Löschen (`409`, wenn verwendet) |
 | `GET` | `/posts` | Alle Posts mit veröffentlichter Version und Blättern |
 | `POST` | `/posts` | Post mit Version 1 anlegen `{ title }` |
@@ -569,9 +584,10 @@ src/
   sortieren, zwischen Zellen verschieben, bearbeiten; Tags; Titel), forken, veröffentlichen,
   zurückziehen, Version löschen, Slug ändern, Vorschau. Eingefrorene Versionen
   nur lesend.
-- Tags: anlegen, umbenennen, löschen (mit Anzeige der Nutzungsanzahl).
+- Tags: anlegen, umbenennen, löschen (mit Anzeige der Nutzung in Posts und Medien).
 - Mediathek: Upload (Presigned URL → R2, Breite/Höhe im Browser ermittelt),
-  Alt-Text bearbeiten, löschen (nur nicht verwendete Bilder).
+  Alt-Text bearbeiten, Tags zuordnen, nach Tag filtern, löschen (nur nicht
+  verwendete Bilder).
 - Die Admin-Oberfläche entsteht Schritt für Schritt zusammen mit dem jeweiligen
   Backend-Teil.
 
