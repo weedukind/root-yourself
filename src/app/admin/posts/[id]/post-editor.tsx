@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ApiError } from "@/shared/api/errors";
 import type { PostDetail, VersionSummary } from "@/shared/api/posts";
 import { api } from "../../api-client";
-import { Badge, dangerButton, ErrorText, formatDateTime, inputClass, primaryButton, secondaryButton } from "../../ui";
+import { Badge, dangerButton, ErrorText, formatDateTime, inputClass, primaryButton, PublicPostLink, secondaryButton } from "../../ui";
 import { PostStatus } from "../post-list";
 
 export function PostEditor({ id }: { id: string }) {
@@ -163,7 +163,8 @@ function PublicationSection({ post, onChanged }: { post: PostDetail; onChanged: 
         <p className="text-sm">
           Öffentlich ist <strong>Version {post.publishedVersion.number}</strong>
           {post.publishedVersion.publishedAt && ` seit ${formatDateTime(post.publishedVersion.publishedAt)}`}.
-          {post.firstPublishedAt && ` Zuerst veröffentlicht am ${formatDateTime(post.firstPublishedAt)}.`}
+          {post.firstPublishedAt && ` Zuerst veröffentlicht am ${formatDateTime(post.firstPublishedAt)}.`}{" "}
+          <PublicPostLink slug={post.slug} />
         </p>
       ) : (
         <p className="text-sm text-zinc-600">
@@ -257,6 +258,7 @@ function VersionNode({
         <span className="font-mono text-zinc-500">v{version.number}</span>
         <span className="min-w-0 flex-1">{version.title}</span>
         {versionState(version)}
+        {version.isPublished && <PublicPostLink slug={post.slug}>Auf der Website</PublicPostLink>}
         <span className="text-xs text-zinc-500">geändert {formatDateTime(version.updatedAt)}</span>
       </div>
       <div className="flex flex-wrap gap-2">

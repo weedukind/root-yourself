@@ -87,7 +87,7 @@ export async function getVersion(
       .map((c) => ({ id: c.id, width: c.width, height: c.height, elements: cellView(c.id) })),
   }));
 
-  return ok({ ...summary, postId, tags: tagRows.sort(byName), rows: rowViews });
+  return ok({ ...summary, postId, postSlug: post.value.slug, tags: tagRows.sort(byName), rows: rowViews });
 }
 
 /** JSON mit sortierten Schlüsseln: jsonb liefert Objekte nicht in der gespeicherten Reihenfolge. */

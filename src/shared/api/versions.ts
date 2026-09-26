@@ -100,6 +100,8 @@ export type RowView = { id: string; gridWidth: number; gridHeight: number; cells
 
 export type VersionDetail = VersionSummary & {
   postId: string;
+  /** Aktueller Slug des Posts – für den Link auf die öffentliche Seite. */
+  postSlug: string;
   tags: TagRef[];
   rows: RowView[];
 };

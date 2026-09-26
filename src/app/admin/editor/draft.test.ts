@@ -18,6 +18,7 @@ import {
 const version: VersionDetail = {
   id: "v1",
   postId: "p1",
+  postSlug: "wurzeln",
   number: 1,
   parentVersionId: null,
   title: "Wurzeln",

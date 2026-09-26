@@ -559,7 +559,12 @@ src/
   - Nachladen per IntersectionObserver; Fallback-Link `/?after=<cursor>`
     funktioniert auch ohne JavaScript.
 - `/posts/[slug]` – veröffentlichte Version; bei unbekanntem Slug Suche in
-  `post_slug_redirects`.
+  `post_slug_redirects` (308 auf den aktuellen Slug, nur solange der Post
+  veröffentlicht ist); sonst 404. Umgesetzt in `src/app/(site)/posts/[slug]`
+  (Routengruppe `(site)` mit Header und Footer), vorerst ohne Cache.
+- Der Admin-Bereich verlinkt die öffentliche Seite (neues Fenster) im Abschnitt
+  „Veröffentlichung“, bei der veröffentlichten Version im Versionsbaum und im
+  Editor der veröffentlichten Version.
 - `/tags/[slug]` – Posts, deren veröffentlichte Version den Tag hat.
 - Datum: „Veröffentlicht am“ = `posts.first_published_at`; zusätzlich
   „Aktualisiert am“ = `published_at` der veröffentlichten Version, wenn später.

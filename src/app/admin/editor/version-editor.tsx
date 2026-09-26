@@ -9,7 +9,7 @@ import type { VersionSummary } from "@/shared/api/posts";
 import type { TagWithUsage } from "@/shared/api/tags";
 import type { SaveVersionResult, VersionDetail } from "@/shared/api/versions";
 import { api } from "../api-client";
-import { Badge, ErrorText, inputClass, primaryButton, secondaryButton } from "../ui";
+import { Badge, ErrorText, inputClass, primaryButton, PublicPostLink, secondaryButton } from "../ui";
 import { type Draft, fingerprint, fromVersion, toInput, toRowViews } from "./draft";
 import { LayoutEditor } from "./layout-editor";
 
@@ -110,7 +110,10 @@ export function VersionEditor({ postId, versionId }: { postId: string; versionId
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-2xl font-semibold">Version {version.number}</h1>
           {version.isPublished ? (
-            <Badge tone="green">veröffentlicht</Badge>
+            <>
+              <Badge tone="green">veröffentlicht</Badge>
+              <PublicPostLink slug={version.postSlug} />
+            </>
           ) : version.isEditable ? (
             <Badge tone="amber">bearbeitbar</Badge>
           ) : (

@@ -18,6 +18,15 @@ export function ErrorText({ error }: { error: ApiError | null }) {
   );
 }
 
+/** Link auf die öffentliche Seite eines Posts, in einem neuen Fenster. */
+export function PublicPostLink({ slug, children = "Auf der Website ansehen" }: { slug: string; children?: React.ReactNode }) {
+  return (
+    <a href={`/posts/${slug}`} target="_blank" rel="noopener noreferrer" className="text-sm text-zinc-700 underline hover:text-zinc-900">
+      {children} ↗<span className="sr-only"> (öffnet in neuem Fenster)</span>
+    </a>
+  );
+}
+
 const dateTime = new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" });
 
 export const formatDateTime = (iso: string) => dateTime.format(new Date(iso));
