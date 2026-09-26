@@ -300,6 +300,17 @@ describe("saveVersionInput", () => {
     expect(result.error?.issues[0]).toMatchObject({ path: ["rows", 0, "cells", 0, "width"], message: "Zelle ist breiter als das Grid" });
   });
 
+  it("lehnt Rows ab, deren Zellen nicht ins Grid passen", () => {
+    const cells = (widths: number[]) => widths.map((width) => ({ width, height: 1, elements: [] }));
+    const row = (widths: number[]) => ({ ...base, rows: [{ gridWidth: 3, gridHeight: 2, cells: cells(widths) }] });
+    expect(saveVersionInput.safeParse(row([1, 1, 1, 1, 1, 1])).success).toBe(true);
+    const tooMany = saveVersionInput.safeParse(row([2, 1, 1, 1, 1, 1]));
+    expect(tooMany.error?.issues[0]).toMatchObject({
+      path: ["rows", 0, "cells"],
+      message: "Die Zellen passen nicht in das Grid (2 Zeilen)",
+    });
+  });
+
   it("lehnt doppelt verwendete Elemente ab", () => {
     const id = crypto.randomUUID();
     const result = saveVersionInput.safeParse({ ...base, rows: twoColumns([text("a", id)], [text("b", id)]) });

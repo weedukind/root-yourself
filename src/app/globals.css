@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 :root {
   --background: #ffffff;
@@ -23,4 +24,25 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Seitenlayout eines Posts (docs/concept.md, „Seitenlayout“): Rows untereinander, darin ein Grid
+   mit --cols × --rows Feldern; Zellen belegen --w × --h Felder und werden in ihrer Reihenfolge
+   automatisch platziert. Auf schmalen Bildschirmen stehen die Zellen untereinander. */
+.post-row {
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 640px) {
+  .post-row {
+    grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+    grid-template-rows: repeat(var(--rows), auto);
+  }
+
+  .post-cell {
+    grid-column: span var(--w) / span var(--w);
+    grid-row: span var(--h) / span var(--h);
+  }
 }

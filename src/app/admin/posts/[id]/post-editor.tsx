@@ -218,7 +218,8 @@ function VersionTree({ post, onChanged }: { post: PostDetail; onChanged: () => P
   return (
     <Section title="Versionen">
       <p className="text-xs text-zinc-500">
-        Bearbeitbar sind nur unveröffentlichte Versionen ohne Forks. Um an einer anderen Version weiterzuarbeiten, sie forken.
+        Bearbeitbar sind unveröffentlichte Versionen ohne Forks. Änderungen an der veröffentlichten Version werden als
+        neue Version gespeichert. Versionen mit Forks sind eingefroren – zum Weiterarbeiten forken.
       </p>
       {renderLevel(null)}
     </Section>
@@ -259,6 +260,12 @@ function VersionNode({
         <span className="text-xs text-zinc-500">geändert {formatDateTime(version.updatedAt)}</span>
       </div>
       <div className="flex flex-wrap gap-2">
+        <Link
+          href={`/admin/posts/${post.id}/versions/${version.id}`}
+          className={version.isEditable || version.isPublished ? primaryButton : secondaryButton}
+        >
+          {version.isEditable || version.isPublished ? "Bearbeiten" : "Ansehen"}
+        </Link>
         <button type="button" className={secondaryButton} disabled={busy} onClick={() => run(`${base}/fork`, "POST")}>
           Forken
         </button>

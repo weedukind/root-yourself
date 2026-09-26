@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { fitsGrid } from "../grid-placement";
 import { postTitle, type VersionSummary } from "./posts";
 import type { TagRef } from "./tags";
 
@@ -45,6 +46,9 @@ export const rowInput = z
     cells: z.array(cellInput).max(MAX_GRID * MAX_GRID),
   })
   .superRefine((row, ctx) => {
+    if (!fitsGrid(row.gridWidth, row.gridHeight, row.cells)) {
+      ctx.addIssue({ code: "custom", path: ["cells"], message: `Die Zellen passen nicht in das Grid (${row.gridHeight} Zeilen)` });
+    }
     row.cells.forEach((cell, i) => {
       if (cell.width > row.gridWidth) {
         ctx.addIssue({ code: "custom", path: ["cells", i, "width"], message: "Zelle ist breiter als das Grid" });

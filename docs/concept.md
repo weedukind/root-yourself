@@ -73,7 +73,12 @@ Footer   – für alle Seiten gleich, im Code
   lassen sich später ergänzen.
 - Auf schmalen Bildschirmen stehen die Zellen einer Row untereinander, in
   derselben Reihenfolge.
-- Das Backend prüft `width ≤ grid_width` und `height ≤ grid_height`.
+- Alle Zellen müssen in das Grid passen: `width ≤ grid_width`,
+  `height ≤ grid_height`, und nach der automatischen Platzierung darf keine
+  Zelle unterhalb der letzten Grid-Zeile landen. Das Backend prüft das beim
+  Speichern (`saveVersionInput`). Im Editor wächst das Grid automatisch um die
+  nötigen Zeilen, wenn Zellen breiter oder höher werden, hinzukommen oder
+  umsortiert werden.
 - Leere Rows und leere Zellen sind erlaubt.
 - Lesereihenfolge (Anreißer, Teaser-Bild, später Suche):
   Row → Zelle → Element, jeweils nach `position`.
@@ -601,6 +606,30 @@ src/
 - Mediathek: Upload (Presigned URL → R2, Breite/Höhe im Browser ermittelt),
   Alt-Text bearbeiten, Tags zuordnen, nach Tag filtern, löschen (nur nicht
   verwendete Bilder).
+- Versions-Editor unter `/admin/posts/[id]/versions/[vid]`:
+  - Titel, Tags, Rows („+ Row“ legt 1 Spalte mit einer Zelle an; Grid-Größe
+    änderbar; freie Felder des Grids werden angezeigt), Zellen (Größe, Reihenfolge), Elemente (hinzufügen,
+    bearbeiten, sortieren, in andere Zellen verschieben; Bilder aus der
+    Mediathek).
+  - Vorschau mit derselben Komponente wie die öffentliche Seite
+    (`src/components/post-content.tsx`; Grid-Regeln in `globals.css`).
+    Markdown über react-markdown – rohes HTML wird nicht gerendert.
+  - Veröffentlichte Version: bearbeitbar, „Als neue Version speichern“ →
+    Auto-Fork, der Editor wechselt zur neuen Version. Eingefrorene Versionen:
+    nur lesend, „Forken und bearbeiten“.
+  - Anzeige ungespeicherter Änderungen, Warnung beim Verlassen, Änderungen
+    verwerfen; bei `version_conflict` Neu laden anbieten.
+  - Der Arbeitsstand ist ein reines Datenmodell mit Funktionen
+    (`src/app/admin/editor/draft.ts`, getestet).
+  - Für die Anzeige freier Felder rechnet der Editor die Auto-Platzierung des
+    Browsers nach (`src/shared/grid-placement.ts`; gegen Chromium an 300
+    zufälligen Layouts ohne Abweichung geprüft). Die öffentliche Seite
+    überlässt die Platzierung weiterhin dem Browser.
+  - Zellen können jede Breite bis zur Spaltenzahl und jede Höhe bis zur
+    Zeilenzahl bekommen; das Grid wächst dabei um die nötigen Zeilen (auch bei
+    „+ Zelle“ und Umsortieren), höchstens bis 12. „Spalten“ bietet keine Werte
+    unter der breitesten Zelle an, „Zeilen“ keine unter dem, was die Zellen
+    brauchen – Zellen werden also nie stillschweigend verkleinert.
 - Die Admin-Oberfläche entsteht Schritt für Schritt zusammen mit dem jeweiligen
   Backend-Teil.
 
