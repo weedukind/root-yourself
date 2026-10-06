@@ -2,6 +2,7 @@ import type { TagRef } from "@/shared/api/tags";
 import type { RowView } from "@/shared/api/versions";
 import { formatDate } from "@/lib/format";
 import { PostContent } from "./post-content";
+import { TagList } from "./tag-list";
 
 // Ein Post mit Titel, Datum, Tags und Inhalt – öffentliche Seite und Vorschau.
 
@@ -31,15 +32,7 @@ export function PostArticle({ title, firstPublishedAt, publishedAt, tags, rows }
             )}
           </p>
         )}
-        {tags.length > 0 && (
-          <ul className="flex flex-wrap gap-2">
-            {tags.map((tag) => (
-              <li key={tag.id} className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700">
-                {tag.name}
-              </li>
-            ))}
-          </ul>
-        )}
+        <TagList tags={tags} />
       </header>
       <PostContent rows={rows} />
     </article>

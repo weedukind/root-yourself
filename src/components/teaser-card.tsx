@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { formatDate } from "@/lib/format";
 import type { Teaser } from "@/shared/api/feed";
+import { TagList } from "./tag-list";
 
 // Teaser eines Posts – vom Server gerendert (erste Seite) und im Browser (nachgeladene Seiten).
 
@@ -30,15 +31,7 @@ export function TeaserCard({ teaser }: { teaser: Teaser }) {
         <p className="text-sm text-zinc-500">
           <time dateTime={teaser.firstPublishedAt}>{formatDate(teaser.firstPublishedAt)}</time>
         </p>
-        {teaser.tags.length > 0 && (
-          <ul className="flex flex-wrap gap-2">
-            {teaser.tags.map((tag) => (
-              <li key={tag.id} className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700">
-                {tag.name}
-              </li>
-            ))}
-          </ul>
-        )}
+        <TagList tags={teaser.tags} />
         {teaser.excerpt && <p className="text-zinc-700">{teaser.excerpt}</p>}
         <Link href={href} className="inline-block text-sm font-medium underline">
           Weiterlesen<span className="sr-only">: {teaser.title}</span>

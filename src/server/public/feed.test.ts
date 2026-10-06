@@ -8,7 +8,7 @@ import { memoryStorage } from "../../../test/memory-storage";
 import { createPost } from "../posts/posts";
 import { getVersion, saveVersion } from "../versions/content";
 import { forkVersion, publishVersion } from "../versions/versions";
-import { decodeCursor, encodeCursor, listTeasers } from "./feed";
+import { decodeCursor, encodeCursor, findTag, listTeasers } from "./feed";
 
 const { storage } = memoryStorage();
 
@@ -153,4 +153,13 @@ describe("Cursor", () => {
       expect(decodeCursor(value)).toBeNull();
     }
   });
+});
+
+describe("findTag", () => {
+  it("findet Tags über ihren Slug", () =>
+    withRollback(async (db) => {
+      const [tag] = await db.insert(tags).values({ name: "Äste", slug: "aeste" }).returning();
+      expect(await findTag(db, "aeste")).toEqual({ id: tag.id, name: "Äste", slug: "aeste" });
+      expect(await findTag(db, "gibt-es-nicht")).toBeNull();
+    }));
 });

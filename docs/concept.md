@@ -513,7 +513,7 @@ Alle Antworten sind JSON. Fehler haben immer die Form
 | Methode | Pfad | Zweck |
 | --- | --- | --- |
 | `GET` | `/api/posts?after=<cursor>` | Nächste zehn Teaser für die Startseite: `{ teasers, nextCursor }` |
-| `GET` | `/api/tags/:slug/posts?after=<cursor>` | Nächste zehn Teaser einer Tag-Seite |
+| `GET` | `/api/tags/:slug/posts?after=<cursor>` | Nächste zehn Teaser einer Tag-Seite: `{ teasers, nextCursor }`; `404` bei unbekanntem Tag |
 
 Die öffentlichen Seiten rendern auf dem Server und rufen die
 Service-Funktionen direkt auf, nicht über die eigene API. Die öffentliche API
@@ -600,6 +600,11 @@ einem Vorschau-Balken (Version, veröffentlicht oder nicht, Gültigkeit).
 - Alle Datumsangaben in Europe/Berlin (`src/lib/format.ts`), unabhängig von
   der Zeitzone des Servers.
 - `/tags/[slug]` – Posts, deren veröffentlichte Version den Tag hat.
+  Gleiche Teaser und gleiches Nachladen wie die Startseite
+  (`/api/tags/[slug]/posts?after=…`). Unbekannter Tag: 404; Tag ohne
+  veröffentlichte Posts: Hinweis. Tags erscheinen auf Post-Seiten und in
+  Teasern als Links (`src/components/tag-list.tsx`). Ein geänderter Tag-Slug
+  hat keine Weiterleitung – die alte Tag-Adresse ergibt dann 404.
 - Datum: „Veröffentlicht am“ = `posts.first_published_at`; zusätzlich
   „Aktualisiert am“ = `published_at` der veröffentlichten Version, wenn später.
 

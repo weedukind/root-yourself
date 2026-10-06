@@ -114,3 +114,9 @@ export async function listTeasers(
     nextCursor: postRows.length > limit ? encodeCursor({ publishedAt: last.firstPublishedAt!, id: last.id }) : null,
   };
 }
+
+/** Tag für eine Tag-Seite; null, wenn es ihn nicht gibt. */
+export async function findTag(db: Db, slug: string): Promise<TagRef | null> {
+  const [tag] = await db.select({ id: tags.id, name: tags.name, slug: tags.slug }).from(tags).where(eq(tags.slug, slug));
+  return tag ?? null;
+}
