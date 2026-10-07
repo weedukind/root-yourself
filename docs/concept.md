@@ -8,8 +8,8 @@ Next.js-App. Es gibt genau eine Person, die Posts schreibt.
 | Bereich            | Wahl                                                                  |
 | ------------------ | --------------------------------------------------------------------- |
 | App                | Next.js (App Router), React, TypeScript, Tailwind                     |
-| Hosting            | Vercel (kein lokales Dateisystem – nichts wird lokal abgelegt)        |
-| Datenbank          | Neon Postgres 18 (Free-Plan), via Vercel Marketplace                  |
+| Hosting            | Vercel, Region Frankfurt (`fra1`, `vercel.json`); kein lokales Dateisystem |
+| Datenbank          | Neon Postgres 18 (Free-Plan, Frankfurt), via Vercel Marketplace       |
 | Datenbank-Zugriff  | Drizzle ORM; Neon-WebSocket-Treiber (Produktion), `pg` (lokal)        |
 | Bilder             | Cloudflare R2 (Produktion), RustFS (lokal, S3-kompatibel); Upload per Presigned URL direkt aus dem Browser |
 | Backend-Schnittstelle | REST-API über Route Handlers (`src/app/api/…`)                     |

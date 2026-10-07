@@ -43,3 +43,8 @@ next-env.d.ts
 
 # IDE
 .idea/
+
+# Agent-Skills von Marketplace-Integrationen (lassen sich neu installieren)
+.agents/
+.claude/skills/
+skills-lock.json
