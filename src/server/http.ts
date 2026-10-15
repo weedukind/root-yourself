@@ -4,7 +4,7 @@ import { fail, notFound, ok, type Result } from "./result";
 
 // Übersetzt Service-Ergebnisse in HTTP-Antworten für die Route Handlers.
 
-const STATUS: Record<ErrorKind, number> = { invalid: 400, not_found: 404, conflict: 409 };
+const STATUS: Record<ErrorKind, number> = { invalid: 400, unauthorized: 401, not_found: 404, conflict: 409 };
 
 export function errorResponse(error: ApiError): Response {
   return Response.json({ error } satisfies ApiErrorBody, { status: STATUS[error.kind] });

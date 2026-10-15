@@ -1,6 +1,6 @@
 // Fehlerformat der REST-API, von Server und Admin-Oberfläche gemeinsam genutzt.
 
-export type ErrorKind = "invalid" | "not_found" | "conflict";
+export type ErrorKind = "invalid" | "unauthorized" | "not_found" | "conflict";
 
 export type FieldIssue = { field: string; message: string };
 

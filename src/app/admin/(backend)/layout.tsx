@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { requireAdmin } from "@/lib/require-admin";
+import { logout } from "../login/actions";
+import { secondaryButton } from "../ui";
 
 const NAV = [
   { href: "/admin/posts", label: "Posts" },
@@ -6,7 +9,9 @@ const NAV = [
   { href: "/admin/tags", label: "Tags" },
 ] as const;
 
-export default function AdminLayout({ children }: LayoutProps<"/admin">) {
+export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
+  const user = await requireAdmin();
+
   return (
     <div className="flex min-h-full flex-1 flex-col bg-zinc-50 text-zinc-900">
       <header className="border-b border-zinc-200 bg-white">
@@ -19,6 +24,14 @@ export default function AdminLayout({ children }: LayoutProps<"/admin">) {
               {item.label}
             </Link>
           ))}
+          <form action={logout} className="ml-auto flex items-center gap-3">
+            <Link href="/admin/account" className="text-sm text-zinc-600 hover:text-zinc-900">
+              Konto ({user.email})
+            </Link>
+            <button type="submit" className={secondaryButton}>
+              Abmelden
+            </button>
+          </form>
         </nav>
       </header>
       <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8">{children}</main>

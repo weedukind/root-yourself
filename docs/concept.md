@@ -13,7 +13,7 @@ Next.js-App. Es gibt genau eine Person, die Posts schreibt.
 | Datenbank-Zugriff  | Drizzle ORM; Neon-WebSocket-Treiber (Produktion), `pg` (lokal)        |
 | Bilder             | Cloudflare R2 (Produktion), RustFS (lokal, S3-kompatibel); Upload per Presigned URL direkt aus dem Browser |
 | Backend-Schnittstelle | REST-API über Route Handlers (`src/app/api/…`)                     |
-| Zugangsschutz      | HTTP Basic Auth (htpasswd-kompatibler Hash) in `proxy.ts`             |
+| Zugangsschutz      | Login mit E-Mail und Passwort (bcrypt) gegen die Tabelle `users`, Session-Cookie, geprüft in `proxy.ts` |
 | Tests              | Vitest gegen eine Testdatenbank im lokalen Postgres-Container         |
 | Suche              | Später: Algolia, befüllt beim Veröffentlichen                         |
 | Lokale Entwicklung | Docker (`docker/docker-compose.dev.yml`): App auf Port 3002, Postgres 18 auf Port 5433, RustFS auf Port 9010 (Weboberfläche 9011) |
@@ -479,11 +479,11 @@ Alle Antworten sind JSON. Fehler haben immer die Form
 | --- | --- |
 | `200` / `201` / `204` | Erfolg / angelegt / gelöscht |
 | `400` | Eingabe ungültig (Zod-Fehler pro Feld) |
-| `401` | Nicht angemeldet (`proxy.ts`) |
+| `401` | Nicht angemeldet: keine gültige Session und kein gültiger API-Token (`proxy.ts`) |
 | `404` | Nicht gefunden |
 | `409` | Konflikt: Slug vergeben, Medium in Verwendung, Version eingefroren, zwischenzeitlich geändert |
 
-### Admin (`/api/admin/…`, Basic Auth über `proxy.ts`)
+### Admin (`/api/admin/…`, Session über `proxy.ts`)
 
 | Methode | Pfad | Zweck |
 | --- | --- | --- |
@@ -639,7 +639,34 @@ einem Vorschau-Balken (Version, veröffentlicht oder nicht, Gültigkeit).
   `S3_SKIP_POLICY=true` (R2 kennt keine Bucket-Policies) und
   `MEDIA_CORS_ORIGINS=https://…`.
 
-## Admin-Bereich (`/admin`, Basic Auth)
+## Admin-Bereich (`/admin`, Login)
+
+- Nutzerverwaltung ohne Registrierung: Nutzer werden von Hand in die Tabelle
+  `users` eingetragen (E-Mail kleingeschrieben, bcrypt-Hash des Passworts).
+  `npm run user:hash -- <email>` fragt das Passwort ab und gibt das passende
+  `INSERT` (und ein `UPDATE` zum Ändern) aus. Passwörter haben mindestens 10 Zeichen. Nutzer löschen beendet auch
+  seine Sessions.
+- Anmelden unter `/admin/login`, Abmelden im Admin-Header. Erfolgreich
+  benutzte E-Mails merkt sich der Browser im Cookie `known_emails` (bis zu 5,
+  ein Jahr, nur unter `/admin`): Die zuletzt benutzte ist vorbelegt, die
+  anderen stehen zur Auswahl; „vergessen“ auf der Login-Seite löscht die Liste.
+- Die Session gilt 30 Tage; das Cookie (`session`, HttpOnly, SameSite=Lax) trägt einen
+  Zufallstoken, die Tabelle `sessions` nur dessen SHA-256. Abmelden löscht
+  die Session in der Datenbank.
+- `proxy.ts` prüft die Session für `/admin/…` (sonst Weiterleitung zum Login,
+  zurück zur ursprünglichen Seite) und `/api/admin/…` (sonst `401`).
+  Server Actions rufen zusätzlich `requireAdmin()` auf.
+- Konto unter `/admin/account` (Link im Header): Passwort ändern (aktuelles
+  Passwort nötig, neues mit mindestens 10 Zeichen). Danach enden alle anderen
+  Sessions des Nutzers, die aktuelle bleibt. Platz für weitere
+  Konto-Einstellungen.
+- API-Token im Konto: höchstens einer pro Nutzer (Tabelle `api_tokens`,
+  Nutzer als Primärschlüssel), ein Jahr gültig, Präfix `ry_`. Er wird nur
+  beim Erzeugen angezeigt, gespeichert ist nur sein SHA-256. Ein neuer Token
+  ersetzt den alten sofort; „Token löschen“ zieht ihn ohne Ersatz zurück. Die
+  Seite zeigt Erzeugung, Ablauf und letzte Nutzung (`last_used_at`, bei jeder
+  Anfrage mit dem Token gesetzt). `proxy.ts` nimmt ihn als
+  `Authorization: Bearer …` an, nur für `/api/admin/…`, nicht für Seiten.
 
 - Posts: anlegen, Versionsbaum anzeigen, Version bearbeiten (Rows und Zellen
   anlegen und anordnen, Grid und Zellgrößen festlegen; Elemente hinzufügen,

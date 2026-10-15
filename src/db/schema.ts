@@ -231,3 +231,46 @@ export const postSlugRedirects = pgTable("post_slug_redirects", {
     .references(() => posts.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at", TIMESTAMP).notNull().defaultNow(),
 });
+
+// Admin-Zugänge. Es gibt keine Registrierung: Nutzer werden von Hand eingetragen
+// (Passwort-Hash mit `npm run user:hash`, siehe docs/concept.md). E-Mails stehen kleingeschrieben
+// in der Tabelle, damit die Anmeldung nicht an der Schreibweise scheitert.
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    email: text("email").notNull().unique(),
+    passwordHash: text("password_hash").notNull(),
+    ...timestamps,
+  },
+  (t) => [check("users_email_lowercase_check", sql`${t.email} = lower(${t.email})`)],
+);
+
+// Anmeldungen. Das Cookie enthält einen Zufallstoken; gespeichert ist nur dessen SHA-256,
+// damit ein Datenbank-Auszug keine gültigen Sessions verrät.
+export const sessions = pgTable(
+  "sessions",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", TIMESTAMP).notNull(),
+    createdAt: timestamp("created_at", TIMESTAMP).notNull().defaultNow(),
+  },
+  (t) => [index("sessions_user_idx").on(t.userId)],
+);
+
+// API-Zugang für Skripte und andere Programme (Authorization: Bearer …, nur /api/admin/…).
+// Höchstens ein Token pro Nutzer: ein neuer ersetzt den alten. Gespeichert ist nur der SHA-256,
+// den Token selbst sieht man ein einziges Mal beim Erzeugen.
+export const apiTokens = pgTable("api_tokens", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  createdAt: timestamp("created_at", TIMESTAMP).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", TIMESTAMP).notNull(),
+  // null: noch nie benutzt.
+  lastUsedAt: timestamp("last_used_at", TIMESTAMP),
+});
