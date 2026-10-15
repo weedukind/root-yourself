@@ -27,7 +27,13 @@ Next.js-App. Es gibt genau eine Person, die Posts schreibt.
 - `.env.local` zeigt auf `localhost:5433`, damit `drizzle-kit` (`npm run db:migrate`, `npm run db:studio`)
   vom Host aus funktioniert. Im Web-Container überschreibt die Compose-Datei den Wert mit `db:5432`.
 - Die Produktions-Datenbank steht bewusst nicht in `.env.local`. Migrationen für Neon:
-  `vercel env pull` in eine separate Datei und `DATABASE_URL` gezielt setzen.
+  `npm run db:migrate:prod` holt die Zugangsdaten mit `vercel env pull` in ein temporäres
+  Verzeichnis (danach gelöscht), zeigt die fehlenden Migrationen und spielt sie nach
+  Rückfrage über die direkte Verbindung ein. `-- --check` zeigt nur den Stand.
+  Preview und Produktion nutzen dieselbe Neon-Datenbank: Migrationen vor dem Merge nach
+  `production` einspielen und nur solche, die der laufende Code verträgt (neue Tabellen
+  und Spalten ja, Umbenennen oder Löschen nicht).
+- Vercel deployt den Zweig `production` in die Produktion; `main` ergibt ein Preview.
 - RustFS ersetzt lokal Cloudflare R2 (MinIO wird nicht mehr als Image veröffentlicht). Der Code
   spricht nur die S3-API; umgeschaltet wird über die `S3_…`-Variablen. `storage-setup` legt beim
   Start den Bucket an und setzt öffentliches Lesen und CORS (`scripts/setup-storage.mjs`).
