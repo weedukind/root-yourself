@@ -26,8 +26,8 @@ services:
       # Hat Vorrang vor .env.local (dort steht die Host-Adresse localhost:5433 für drizzle-kit).
       DATABASE_URL: postgres://postgres:postgres@db:5432/rootyourself
       # Der Browser erreicht den Speicher über den Host, nicht über den Container-Namen.
-      S3_PUBLIC_ENDPOINT: http://localhost:9000
-      MEDIA_PUBLIC_URL: http://localhost:9000/rootyourself-media
+      S3_PUBLIC_ENDPOINT: http://localhost:9010
+      MEDIA_PUBLIC_URL: http://localhost:9010/rootyourself-media
     depends_on:
       db:
         condition: service_healthy
@@ -53,12 +53,12 @@ services:
       retries: 15
 
   # S3-kompatibler Speicher als lokaler Ersatz für Cloudflare R2 (MinIO gibt es nicht mehr als Image).
-  # Weboberfläche: http://localhost:9001 (Zugang siehe x-storage-env).
+  # Weboberfläche: http://localhost:9011 (Zugang siehe x-storage-env).
   storage:
     image: rustfs/rustfs:1.0.0
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "9010:9000"
+      - "9011:9001"
     environment:
       RUSTFS_ACCESS_KEY: rootyourself
       RUSTFS_SECRET_KEY: rootyourself-dev

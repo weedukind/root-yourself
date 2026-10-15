@@ -1,0 +1,1 @@
+ALTER TABLE "api_tokens" ADD COLUMN "last_used_at" timestamp (3) with time zone;

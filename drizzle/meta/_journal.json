@@ -22,6 +22,27 @@
       "when": 1790318900251,
       "tag": "0002_media_tags",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792096206235,
+      "tag": "0003_users_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792097508041,
+      "tag": "0004_api_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792097779777,
+      "tag": "0005_api_tokens_last_used",
+      "breakpoints": true
     }
   ]
 }

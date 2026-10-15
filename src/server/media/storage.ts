@@ -29,6 +29,9 @@ export function createS3Storage(): MediaStorage {
       endpoint,
       region: process.env.S3_REGION ?? "auto",
       forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
+      // Sonst schreibt das SDK die CRC32 eines leeren Bodys in die Presigned URL; R2 prüft sie
+      // gegen die echte Datei und lehnt den Upload ab.
+      requestChecksumCalculation: "WHEN_REQUIRED",
       credentials: { accessKeyId: env("S3_ACCESS_KEY_ID"), secretAccessKey: env("S3_SECRET_ACCESS_KEY") },
     });
   const client = config(env("S3_ENDPOINT"));

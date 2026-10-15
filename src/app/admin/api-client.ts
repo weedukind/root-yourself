@@ -1,6 +1,6 @@
 import type { ApiError, ApiErrorBody } from "@/shared/api/errors";
 
-// Aufruf der Admin-REST-API aus dem Browser. Basic Auth schickt der Browser selbst mit.
+// Aufruf der Admin-REST-API aus dem Browser. Das Session-Cookie schickt der Browser selbst mit.
 
 export type ApiResult<T> = { ok: true; value: T } | { ok: false; error: ApiError };
 
