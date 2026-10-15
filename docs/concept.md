@@ -16,7 +16,7 @@ Next.js-App. Es gibt genau eine Person, die Posts schreibt.
 | Zugangsschutz      | HTTP Basic Auth (htpasswd-kompatibler Hash) in `proxy.ts`             |
 | Tests              | Vitest gegen eine Testdatenbank im lokalen Postgres-Container         |
 | Suche              | Später: Algolia, befüllt beim Veröffentlichen                         |
-| Lokale Entwicklung | Docker (`docker/docker-compose.dev.yml`): App auf Port 3002, Postgres 18 auf Port 5433, RustFS auf Port 9000 (Weboberfläche 9001) |
+| Lokale Entwicklung | Docker (`docker/docker-compose.dev.yml`): App auf Port 3002, Postgres 18 auf Port 5433, RustFS auf Port 9010 (Weboberfläche 9011) |
 
 ## Lokale Entwicklung
 
