@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { media, posts, tags } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { ElementInput, SaveVersionInput } from "@/shared/api/versions";
-import { withRollback } from "../../../test/db";
+import { createFolder, withRollback } from "../../../test/db";
 import { memoryStorage } from "../../../test/memory-storage";
 import { createPost } from "../posts/posts";
 import { getVersion, saveVersion } from "../versions/content";
@@ -82,7 +82,7 @@ describe("listTeasers", () => {
     withRollback(async (db) => {
       const [image] = await db
         .insert(media)
-        .values({ storageKey: "2026/01/a.jpg", filename: "a.jpg", mimeType: "image/jpeg", sizeBytes: 1, width: 800, height: 600, alt: "Wald" })
+        .values({ folderId: await createFolder(db), storageKey: "2026/01/a.jpg", filename: "a.jpg", mimeType: "image/jpeg", sizeBytes: 1, width: 800, height: 600, alt: "Wald" })
         .returning();
       await published(db, "Layout", 1, {
         rows: [

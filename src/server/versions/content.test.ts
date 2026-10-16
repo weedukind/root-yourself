@@ -9,7 +9,7 @@ import {
   type SaveVersionInput,
   type VersionDetail,
 } from "@/shared/api/versions";
-import { withRollback } from "../../../test/db";
+import { createFolder, withRollback } from "../../../test/db";
 import { memoryStorage } from "../../../test/memory-storage";
 import { createPost } from "../posts/posts";
 import { getVersion, saveVersion } from "./content";
@@ -153,7 +153,7 @@ describe("saveVersion – unveröffentlichtes Blatt", () => {
       const post = await newPost(db);
       const [image] = await db
         .insert(media)
-        .values({ storageKey: "2026/09/bild.png", filename: "bild.png", mimeType: "image/png", sizeBytes: 1, width: 40, height: 30, alt: "Ein Bild" })
+        .values({ folderId: await createFolder(db), storageKey: "2026/09/bild.png", filename: "bild.png", mimeType: "image/png", sizeBytes: 1, width: 40, height: 30, alt: "Ein Bild" })
         .returning();
       const v1 = await load(db, post.id, post.versions[0].id);
       const { version } = await save(db, post.id, v1.id, toInput(v1, {

@@ -7,12 +7,15 @@ import {
   MAX_UPLOAD_BYTES,
   type ImageType,
   type Media,
+  type MediaFolder,
   type MediaWithUsage,
   type PreparedUpload,
 } from "@/shared/api/media";
 import type { TagRef, TagWithUsage } from "@/shared/api/tags";
 import { api, type ApiResult } from "@/app/admin/api-client";
+import { folderOptions, pathLabel, pathOf } from "@/app/admin/media-folders";
 import { dangerButton, ErrorText, inputClass, primaryButton, secondaryButton } from "@/app/admin/ui";
+import { FolderTree } from "./folder-tree";
 
 const ACCEPT = Object.keys(IMAGE_TYPES).join(",");
 
@@ -39,7 +42,7 @@ function imageSize(file: File): Promise<{ width: number; height: number }> {
 }
 
 /** Upload in drei Schritten: vorbereiten → Datei direkt in den Speicher → bestätigen. */
-async function uploadFile(file: File): Promise<ApiResult<Media>> {
+async function uploadFile(file: File, folderId: string): Promise<ApiResult<Media>> {
   if (!(file.type in IMAGE_TYPES)) return { ok: false, error: clientError("Nur JPEG, PNG, WebP, AVIF oder GIF") };
   if (file.size > MAX_UPLOAD_BYTES) return { ok: false, error: clientError("Höchstens 20 MB") };
 
@@ -65,75 +68,153 @@ async function uploadFile(file: File): Promise<ApiResult<Media>> {
 
   return api<Media>("/media", {
     method: "POST",
-    body: { key: prepared.value.key, filename: file.name, ...size },
+    body: { key: prepared.value.key, folderId, filename: file.name, ...size },
   });
 }
 
-export function MediaLibrary() {
+export function MediaLibrary({ initialFolderId }: { initialFolderId: string | null }) {
+  const [folders, setFolders] = useState<MediaFolder[] | null>(null);
+  const [folderId, setFolderId] = useState<string | null>(initialFolderId);
   const [items, setItems] = useState<MediaWithUsage[] | null>(null);
   const [allTags, setAllTags] = useState<TagWithUsage[]>([]);
   const [filterTag, setFilterTag] = useState("");
   const [loadError, setLoadError] = useState<ApiError | null>(null);
 
+  // Ohne Ordner zeigt die oberste Ebene nur Ordner – außer bei einem Tag-Filter: dann alle Treffer.
+  const showImages = folderId !== null || filterTag !== "";
+
   const load = useCallback(async () => {
-    const [mediaResult, tagsResult] = await Promise.all([
-      api<MediaWithUsage[]>(filterTag ? `/media?tag=${filterTag}` : "/media"),
+    const params = new URLSearchParams();
+    if (folderId) params.set("folder", folderId);
+    if (filterTag) params.set("tag", filterTag);
+    const [foldersResult, mediaResult, tagsResult] = await Promise.all([
+      api<MediaFolder[]>("/media/folders"),
+      showImages ? api<MediaWithUsage[]>(`/media?${params}`) : Promise.resolve(null),
       api<TagWithUsage[]>("/tags"),
     ]);
     if (tagsResult.ok) setAllTags(tagsResult.value);
-    if (mediaResult.ok) {
-      setItems(mediaResult.value);
-      setLoadError(null);
-    } else {
-      setLoadError(mediaResult.error);
-    }
-  }, [filterTag]);
+    if (!foldersResult.ok) return setLoadError(foldersResult.error);
+    setFolders(foldersResult.value);
+    if (mediaResult && !mediaResult.ok) return setLoadError(mediaResult.error);
+    setItems(mediaResult ? mediaResult.value : []);
+    setLoadError(null);
+  }, [folderId, filterTag, showImages]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Liste laden, auch nach Filterwechsel
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Inhalt laden, auch nach Ordner- oder Filterwechsel
     void load();
   }, [load]);
 
+  function open(id: string | null) {
+    setFolderId(id);
+    setItems(null);
+    // Den Ordner in der Adresse merken, damit Neuladen und Zurück-Links dort landen.
+    window.history.replaceState(null, "", id ? `?folder=${id}` : window.location.pathname);
+  }
+
+  const current = folders?.find((f) => f.id === folderId) ?? null;
+  // Ein gelöschter oder unbekannter Ordner aus der Adresse: zurück nach oben.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- auf die oberste Ebene ausweichen
+    if (folders && folderId && !current) open(null);
+  }, [folders, folderId, current]);
+
+  if (!folders) return loadError ? <ErrorText error={loadError} /> : <p className="text-sm text-zinc-500">Lädt …</p>;
+
   return (
-    <div className="space-y-6">
-      <Uploader onUploaded={load} />
-      <div className="flex items-center gap-2">
-        <label htmlFor="filter-tag" className="text-sm font-medium">
-          Filter
-        </label>
-        <select
-          id="filter-tag"
-          className={inputClass}
-          value={filterTag}
-          onChange={(e) => setFilterTag(e.target.value)}
-        >
-          <option value="">Alle Bilder</option>
-          {allTags.map((tag) => (
-            <option key={tag.id} value={tag.id}>
-              {tag.name} ({tag.mediaCount})
-            </option>
+    <div className="grid gap-6 md:grid-cols-[14rem_1fr]">
+      <nav aria-label="Ordner" className="space-y-2 md:border-r md:border-zinc-200 md:pr-4">
+        <FolderTree folders={folders} currentId={folderId} onOpen={open} onChanged={load} />
+      </nav>
+
+      <div className="min-w-0 space-y-6">
+        <Breadcrumb folders={folders} currentId={folderId} onOpen={open} />
+
+
+        {current ? (
+          <Uploader key={current.id} folderId={current.id} onUploaded={load} />
+        ) : (
+          <p className="text-sm text-zinc-500">
+            Bilder liegen immer in einem Ordner. Zum Hochladen links einen Ordner öffnen oder mit „+“ einen anlegen.
+          </p>
+        )}
+
+        <div className="flex items-center gap-2">
+          <label htmlFor="filter-tag" className="text-sm font-medium">
+            Filter
+          </label>
+          <select id="filter-tag" className={inputClass} value={filterTag} onChange={(e) => setFilterTag(e.target.value)}>
+            <option value="">{current ? "Alle Bilder in diesem Ordner" : "Kein Tag-Filter"}</option>
+            {allTags.map((tag) => (
+              <option key={tag.id} value={tag.id}>
+                {tag.name} ({tag.mediaCount})
+              </option>
+            ))}
+          </select>
+          {!current && filterTag && <span className="text-xs text-zinc-500">sucht in allen Ordnern</span>}
+        </div>
+        <ErrorText error={loadError} />
+
+        {showImages &&
+          (items === null ? (
+            !loadError && <p className="text-sm text-zinc-500">Lädt …</p>
+          ) : items.length === 0 ? (
+            <p className="text-sm text-zinc-500">
+              {filterTag ? "Keine Bilder mit diesem Tag." : "In diesem Ordner liegen noch keine Bilder."}
+            </p>
+          ) : (
+            <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {items.map((item) => (
+                <MediaCard
+                  key={item.id}
+                  item={item}
+                  folders={folders}
+                  showFolder={!current}
+                  allTags={allTags}
+                  onChanged={load}
+                />
+              ))}
+            </ul>
           ))}
-        </select>
       </div>
-      <ErrorText error={loadError} />
-      {items === null ? (
-        !loadError && <p className="text-sm text-zinc-500">Lädt …</p>
-      ) : items.length === 0 ? (
-        <p className="text-sm text-zinc-500">{filterTag ? "Keine Bilder mit diesem Tag." : "Noch keine Bilder."}</p>
-      ) : (
-        <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((item) => (
-            <MediaCard key={item.id} item={item} allTags={allTags} onChanged={load} />
-          ))}
-        </ul>
-      )}
     </div>
+  );
+}
+
+function Breadcrumb({
+  folders,
+  currentId,
+  onOpen,
+}: {
+  folders: MediaFolder[];
+  currentId: string | null;
+  onOpen: (id: string | null) => void;
+}) {
+  const path = pathOf(folders, currentId);
+  return (
+    <nav aria-label="Pfad" className="flex flex-wrap items-center gap-1 text-sm">
+      <button type="button" className="text-zinc-600 underline hover:text-zinc-900" onClick={() => onOpen(null)}>
+        Mediathek
+      </button>
+      {path.map((folder, i) => (
+        <span key={folder.id} className="flex items-center gap-1">
+          <span className="text-zinc-400">/</span>
+          {i === path.length - 1 ? (
+            <span className="font-semibold">{folder.name}</span>
+          ) : (
+            <button type="button" className="text-zinc-600 underline hover:text-zinc-900" onClick={() => onOpen(folder.id)}>
+              {folder.name}
+            </button>
+          )}
+        </span>
+      ))}
+    </nav>
   );
 }
 
 type UploadStatus = { name: string; state: "läuft" | "fertig" | "fehler"; error?: ApiError };
 
-function Uploader({ onUploaded }: { onUploaded: () => Promise<void> }) {
+function Uploader({ folderId, onUploaded }: { folderId: string; onUploaded: () => Promise<void> }) {
   const [statuses, setStatuses] = useState<UploadStatus[]>([]);
   const busy = statuses.some((s) => s.state === "läuft");
 
@@ -141,7 +222,7 @@ function Uploader({ onUploaded }: { onUploaded: () => Promise<void> }) {
     setStatuses(files.map((f) => ({ name: f.name, state: "läuft" })));
     await Promise.all(
       files.map(async (file, index) => {
-        const result = await uploadFile(file);
+        const result = await uploadFile(file, folderId);
         setStatuses((current) =>
           current.map((s, i) =>
             i === index ? { ...s, state: result.ok ? "fertig" : "fehler", error: result.ok ? undefined : result.error } : s,
@@ -155,7 +236,7 @@ function Uploader({ onUploaded }: { onUploaded: () => Promise<void> }) {
   return (
     <div className="space-y-2">
       <label className="block text-sm font-medium" htmlFor="upload">
-        Bilder hochladen
+        Bilder in diesen Ordner hochladen
       </label>
       <input
         id="upload"
@@ -186,10 +267,15 @@ function Uploader({ onUploaded }: { onUploaded: () => Promise<void> }) {
 
 function MediaCard({
   item,
+  folders,
+  showFolder,
   allTags,
   onChanged,
 }: {
   item: MediaWithUsage;
+  folders: MediaFolder[];
+  /** Ordnerpfad anzeigen, wenn die Liste Bilder aus mehreren Ordnern zeigt. */
+  showFolder: boolean;
   allTags: TagRef[];
   onChanged: () => Promise<void>;
 }) {
@@ -203,6 +289,15 @@ function MediaCard({
     event.preventDefault();
     setBusy(true);
     const result = await api<Media>(`/media/${item.id}`, { method: "PATCH", body: { alt, updatedAt: item.updatedAt } });
+    setBusy(false);
+    if (!result.ok) return setError(result.error);
+    setError(null);
+    await onChanged();
+  }
+
+  async function move(folderId: string) {
+    setBusy(true);
+    const result = await api<Media>(`/media/${item.id}`, { method: "PATCH", body: { folderId, updatedAt: item.updatedAt } });
     setBusy(false);
     if (!result.ok) return setError(result.error);
     setError(null);
@@ -232,7 +327,23 @@ function MediaCard({
             {item.width} × {item.height} · {formatSize(item.sizeBytes)} ·{" "}
             {inUse ? `in ${item.versionCount} ${item.versionCount === 1 ? "Version" : "Versionen"}` : "nicht verwendet"}
           </p>
+          {showFolder && <p className="truncate text-xs text-zinc-500">📁 {pathLabel(folders, item.folderId)}</p>}
         </div>
+        <label className="flex items-center gap-2 text-xs text-zinc-600">
+          Ordner
+          <select
+            className={`${inputClass} min-w-0 flex-1 text-xs`}
+            value={item.folderId}
+            disabled={busy}
+            onChange={(e) => void move(e.target.value)}
+          >
+            {folderOptions(folders).map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <MediaTags item={item} allTags={allTags} onChanged={onChanged} onError={setError} />
         <form onSubmit={saveAlt} className="flex gap-2">
           <label className="sr-only" htmlFor={`alt-${item.id}`}>

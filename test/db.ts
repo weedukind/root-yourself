@@ -2,6 +2,7 @@ import { TransactionRollbackError } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import * as schema from "@/db/schema";
+import { mediaFolders } from "@/db/schema";
 import type { Db } from "@/db/types";
 
 const pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL });
@@ -33,4 +34,10 @@ export async function expectDbError(db: Db, fn: (db: Db) => Promise<unknown>): P
     throw error;
   }
   throw new Error("Erwarteter Datenbankfehler ist ausgeblieben");
+}
+
+// Bilder liegen immer in einem Ordner; Tests, die Bilder direkt anlegen, brauchen einen.
+export async function createFolder(db: Db, name = `Ordner ${crypto.randomUUID()}`): Promise<string> {
+  const [folder] = await db.insert(mediaFolders).values({ name }).returning({ id: mediaFolders.id });
+  return folder.id;
 }

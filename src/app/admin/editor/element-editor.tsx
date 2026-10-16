@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { MediaWithUsage } from "@/shared/api/media";
+import type { MediaFolder, MediaWithUsage } from "@/shared/api/media";
 import type { MediaRef } from "@/shared/api/versions";
 import { api } from "../api-client";
+import { folderOptions } from "../media-folders";
 import { inputClass, secondaryButton } from "../ui";
 import type { DraftElement } from "./draft";
 
@@ -97,14 +98,28 @@ export function MediaPicker({
   buttonClass?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [folders, setFolders] = useState<MediaFolder[] | null>(null);
+  // "": alle Ordner.
+  const [folderId, setFolderId] = useState("");
   const [items, setItems] = useState<MediaWithUsage[] | null>(null);
 
   useEffect(() => {
-    if (!open || items) return;
-    void api<MediaWithUsage[]>("/media").then((result) => {
-      if (result.ok) setItems(result.value);
+    if (!open || folders) return;
+    void api<MediaFolder[]>("/media/folders").then((result) => {
+      if (result.ok) setFolders(result.value);
     });
-  }, [open, items]);
+  }, [open, folders]);
+
+  useEffect(() => {
+    if (!open) return;
+    let current = true;
+    void api<MediaWithUsage[]>(folderId ? `/media?folder=${folderId}` : "/media").then((result) => {
+      if (current && result.ok) setItems(result.value);
+    });
+    return () => {
+      current = false;
+    };
+  }, [open, folderId]);
 
   if (!open) {
     return (
@@ -122,10 +137,32 @@ export function MediaPicker({
           Schließen
         </button>
       </div>
+      {folders && folders.length > 0 && (
+        <label className="flex items-center gap-2 text-sm">
+          Ordner
+          <select
+            className={inputClass}
+            value={folderId}
+            onChange={(e) => {
+              setFolderId(e.target.value);
+              setItems(null);
+            }}
+          >
+            <option value="">Alle Ordner</option>
+            {folderOptions(folders).map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {items === null ? (
         <p className="text-sm text-zinc-500">Lädt …</p>
       ) : items.length === 0 ? (
-        <p className="text-sm text-zinc-500">Die Mediathek ist leer – zuerst Bilder hochladen.</p>
+        <p className="text-sm text-zinc-500">
+          {folderId ? "In diesem Ordner liegen keine Bilder." : "Die Mediathek ist leer – zuerst Bilder hochladen."}
+        </p>
       ) : (
         <ul className="grid grid-cols-3 gap-2 sm:grid-cols-5">
           {items.map((item) => (

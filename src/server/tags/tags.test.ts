@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { media, mediaTags, posts, versions, versionTags } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { withRollback } from "../../../test/db";
+import { createFolder, withRollback } from "../../../test/db";
 import { createTag, deleteTag, listTags, updateTag } from "./tags";
 
 async function create(db: Db, name: string) {
@@ -126,10 +126,11 @@ describe("listTags", () => {
       await db.insert(versionTags).values({ versionId: v3.id, tagId: wurzeln.id });
 
       // Zwei Bilder mit dem Tag.
+      const folderId = await createFolder(db);
       const images = await db
         .insert(media)
         .values(
-          ["a", "b"].map((k) => ({ storageKey: k, filename: k, mimeType: "image/png", sizeBytes: 1, width: 1, height: 1 })),
+          ["a", "b"].map((k) => ({ folderId, storageKey: k, filename: k, mimeType: "image/png", sizeBytes: 1, width: 1, height: 1 })),
         )
         .returning();
       await db.insert(mediaTags).values(images.map((m) => ({ mediaId: m.id, tagId: wurzeln.id })));
