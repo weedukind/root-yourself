@@ -29,7 +29,8 @@ Next.js-App. Es gibt genau eine Person, die Posts schreibt.
 - Die Produktions-Datenbank steht bewusst nicht in `.env.local`. Migrationen für Neon:
   `npm run db:migrate:prod` holt die Zugangsdaten mit `vercel env pull` in ein temporäres
   Verzeichnis (danach gelöscht), zeigt die fehlenden Migrationen und spielt sie nach
-  Rückfrage über die direkte Verbindung ein. `-- --check` zeigt nur den Stand.
+  Rückfrage über die direkte Verbindung ein. `-- --check` zeigt nur den Stand,
+  `-- --yes` spielt ohne Rückfrage ein (nötig ohne Terminal, z. B. mit `!` in Claude Code).
   Preview und Produktion nutzen dieselbe Neon-Datenbank: Migrationen vor dem Merge nach
   `production` einspielen und nur solche, die der laufende Code verträgt (neue Tabellen
   und Spalten ja, Umbenennen oder Löschen nicht).

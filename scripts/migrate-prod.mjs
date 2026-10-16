@@ -11,11 +11,13 @@ import pg from "pg";
 // Spielt fehlende Migrationen in die Produktions-Datenbank (Neon) ein.
 //   npm run db:migrate:prod             zeigt fehlende Migrationen, fragt, spielt sie ein
 //   npm run db:migrate:prod -- --check  zeigt nur den Stand, ändert nichts
+//   npm run db:migrate:prod -- --yes    ohne Rückfrage (z. B. mit `!` in Claude Code, dort gibt es keine Eingabe)
 //   … -- --env-file <datei>             nimmt diese Datei statt `vercel env pull` (z. B. zum Testen)
 // Die Zugangsdaten landen nur in einem temporären Verzeichnis, das am Ende gelöscht wird.
 
 const args = process.argv.slice(2);
 const checkOnly = args.includes("--check");
+const yes = args.includes("--yes");
 const envFileArg = args.includes("--env-file") ? args[args.indexOf("--env-file") + 1] : null;
 const MIGRATIONS = "./drizzle";
 
@@ -60,9 +62,19 @@ try {
   } else {
     console.log(`Fehlende Migrationen:\n${pending.map((tag) => `  - ${tag}`).join("\n")}`);
     if (!checkOnly) {
-      const rl = createInterface({ input: process.stdin, output: process.stdout });
-      const answer = (await rl.question("In die Produktions-Datenbank einspielen? (j/n) ")).trim().toLowerCase();
-      rl.close();
+      let answer = "j";
+      if (!yes) {
+        if (!process.stdin.isTTY) {
+          // Ohne Terminal wartete die Rückfrage endlos.
+          console.error("Keine Eingabe möglich: mit -- --yes ohne Rückfrage einspielen.");
+          process.exitCode = 1;
+          answer = "n";
+        } else {
+          const rl = createInterface({ input: process.stdin, output: process.stdout });
+          answer = (await rl.question("In die Produktions-Datenbank einspielen? (j/n) ")).trim().toLowerCase();
+          rl.close();
+        }
+      }
       if (answer !== "j") {
         console.log("Abgebrochen, nichts geändert.");
       } else {
