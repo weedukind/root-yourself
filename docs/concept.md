@@ -59,7 +59,8 @@ Next.js-App. Es gibt genau eine Person, die Posts schreibt.
   Ein Element ist in einem von drei **Modi**; was jeder zeigt, bestimmt der
   Elementtyp selbst (`src/elements/<typ>/show.tsx`, `view.tsx`, `edit.tsx`):
   - **Show** – wie die Website es zeigt (auch die Vorschau im Editor).
-  - **View** – wie der Editor es zeigt; vorerst wie Show. Der Editor legt die
+  - **View** – wie der Editor es zeigt; wie Show, nur Bilder als Vorschau
+    (höchstens 300 × 300 px). Der Editor legt die
     Steuerelemente drumherum (↑ ↓, in andere Zelle, ✎, ✕) und darunter
     „+ Element hinzufügen“ mit den verfügbaren Typen.
   - **Edit** – das Formular. Hinzufügen und Bearbeiten (✎ oder Doppelklick)
