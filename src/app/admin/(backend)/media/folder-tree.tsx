@@ -10,6 +10,8 @@ import { ErrorText, inputClass } from "@/app/admin/ui";
 // Ordnerbaum der Mediathek mit Kontextmenü (Rechtsklick oder „⋯“): Umbenennen, Unterordner
 // erstellen, Ausschneiden/Einfügen (Verschieben), Löschen (nur leere Ordner). „Alle Ordner“ hat
 // ein Menü mit „Einfügen“ für die oberste Ebene. Umbenennen und Anlegen geschehen direkt im Baum.
+// Ausgeschnittene Bilder (aus der Bildliste) fügt „Einfügen“ auf einem Ordner dort ein; die
+// Zwischenablage teilen sich Ordner und Bilder, das letzte Ausschneiden gilt.
 // Ordner lassen sich am Griff vor dem Namen (erscheint beim Überfahren) auf einen anderen Ordner
 // oder auf „Alle Ordner“ (oberste Ebene) ziehen. Nur der Griff ist ziehbar: Eine ziehbare Zeile
 // mit Klick-Elementen darin startet nicht in jedem Browser zuverlässig. Ziele, die canMoveFolder ablehnt (er selbst, seine Unterordner, sein jetziger
@@ -47,6 +49,11 @@ function shortcutAction(e: React.KeyboardEvent): Action | null {
   return null;
 }
 
+/** Inhalt der Zwischenablage: ein ausgeschnittener Ordner oder ausgeschnittene Bilder. */
+export type Clipboard =
+  | { kind: "folder"; id: string }
+  | { kind: "media"; items: { id: string; folderId: string; updatedAt: string }[] };
+
 // folder null: Menü von „Alle Ordner“ (oberste Ebene).
 type Menu = { folder: MediaFolder | null; x: number; y: number };
 
@@ -80,11 +87,18 @@ export function FolderTree({
   currentId,
   onOpen,
   onChanged,
+  clipboard,
+  onClipboard,
+  onPasteMedia,
 }: {
   folders: MediaFolder[];
   currentId: string | null;
   onOpen: (id: string | null) => void;
   onChanged: () => Promise<void>;
+  clipboard: Clipboard | null;
+  onClipboard: (clipboard: Clipboard | null) => void;
+  /** Ausgeschnittene Bilder in den Ordner verschieben; liefert den ersten Fehler. */
+  onPasteMedia: (folderId: string) => Promise<ApiError | null>;
 }) {
   const [menu, setMenu] = useState<Menu | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -92,7 +106,9 @@ export function FolderTree({
   // Stabil, sonst meldet das Menü seine Fenster-Listener bei jedem Rendern neu an.
   const closeMenu = useCallback(() => setMenu(null), []);
   // Ausgeschnittener Ordner, wartet auf „Einfügen“.
-  const [cut, setCut] = useState<string | null>(null);
+  const cut = clipboard?.kind === "folder" ? clipboard.id : null;
+  const setCut = (folderId: string | null) => onClipboard(folderId ? { kind: "folder", id: folderId } : null);
+  const cutMedia = clipboard?.kind === "media" ? clipboard.items : null;
   const [dragging, setDragging] = useState<string | null>(null);
   // Ordner-ID des Ziels unter dem Mauszeiger, "top" für die oberste Ebene.
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -228,6 +244,7 @@ export function FolderTree({
   const cutFolder = folders.find((f) => f.id === cut) ?? null;
 
   function pasteItem(targetId: string | null): MenuItem {
+    if (cutMedia) return pasteMediaItem(cutMedia, targetId);
     const allowed = cutFolder !== null && canMoveFolder(folders, cutFolder.id, targetId);
     return {
       action: "paste",
@@ -246,10 +263,32 @@ export function FolderTree({
     };
   }
 
+  function pasteMediaItem(items: { folderId: string }[], targetId: string | null): MenuItem {
+    const moving = targetId === null ? 0 : items.filter((i) => i.folderId !== targetId).length;
+    return {
+      action: "paste",
+      label: `${items.length === 1 ? "1 Bild" : `${items.length} Bilder`} einfügen`,
+      disabled: moving === 0,
+      title:
+        targetId === null
+          ? "Bilder liegen immer in einem Ordner"
+          : moving === 0
+            ? "Die Bilder liegen schon in diesem Ordner"
+            : undefined,
+      onSelect: () => {
+        if (targetId === null) return;
+        onClipboard(null);
+        void onPasteMedia(targetId).then((pasteError) =>
+          setError(pasteError ? { folderId: targetId, error: pasteError } : null),
+        );
+      },
+    };
+  }
+
   /** Tastenkürzel auf einem Ordner (null: „Alle Ordner“); true, wenn die Taste verbraucht wurde. */
   function handleShortcut(folder: MediaFolder | null, e: React.KeyboardEvent): boolean {
-    if (e.key === "Escape" && cut) {
-      setCut(null);
+    if (e.key === "Escape" && clipboard) {
+      onClipboard(null);
       return true;
     }
     const action = shortcutAction(e);
