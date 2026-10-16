@@ -56,6 +56,20 @@ Next.js-App. Es gibt genau eine Person, die Posts schreibt.
   untereinander. Typen: `heading`, `text` (Markdown), `image` (verweist auf
   die Mediathek); weitere folgen. Mehrere Versionen desselben Posts können
   dasselbe Element verwenden (Copy-on-Write).
+  Ein Element ist in einem von drei **Modi**; was jeder zeigt, bestimmt der
+  Elementtyp selbst (`src/elements/<typ>/show.tsx`, `view.tsx`, `edit.tsx`):
+  - **Show** – wie die Website es zeigt (auch die Vorschau im Editor).
+  - **View** – wie der Editor es zeigt; vorerst wie Show. Der Editor legt die
+    Steuerelemente drumherum (↑ ↓, in andere Zelle, ✎, ✕) und darunter
+    „+ Element hinzufügen“ mit den verfügbaren Typen.
+  - **Edit** – das Formular. Hinzufügen und Bearbeiten (✎ oder Doppelklick)
+    öffnen es in einem Popup; „Übernehmen“ ändert den Entwurf, gespeichert wird
+    mit der Version. Escape, „Abbrechen“ oder ein Klick daneben verwerfen.
+    „Übernehmen“ ist gesperrt, solange das Element unvollständig ist (z. B.
+    Überschrift ohne Text, Bild ohne gewähltes Bild).
+  Eingefrorene Versionen zeigen nur View, ohne Steuerelemente. Ein neuer Typ
+  braucht einen Ordner mit den drei Modi und je einen Eintrag in
+  `src/elements/show.tsx` und `src/elements/admin.tsx` (dazu Schema und Draft).
 - **Tag**: Name und Slug. Gemeinsam für Posts und Medien: an Posts als
   Metadaten pro Version, an Medien zum Ordnen der Mediathek (nicht versioniert).
 - **Medium**: Bild in R2, verwaltet über die Mediathek. Liegt in genau einem Ordner.
@@ -726,9 +740,9 @@ einem Vorschau-Balken (Version, veröffentlicht oder nicht, Gültigkeit).
   nach Ordner.
 - Versions-Editor unter `/admin/posts/[id]/versions/[vid]`:
   - Titel, Tags, Rows („+ Row“ legt 1 Spalte mit einer Zelle an; Grid-Größe
-    änderbar; freie Felder des Grids werden angezeigt), Zellen (Größe, Reihenfolge), Elemente (hinzufügen,
-    bearbeiten, sortieren, in andere Zellen verschieben; Bilder aus der
-    Mediathek).
+    änderbar; freie Felder des Grids werden angezeigt), Zellen (Größe, Reihenfolge), Elemente (im View-Modus
+    mit Steuerelementen; hinzufügen und bearbeiten im Popup, sortieren, in
+    andere Zellen verschieben; Bilder aus der Mediathek; siehe „Element“).
   - Vorschau mit derselben Komponente wie die öffentliche Seite
     (`src/components/post-content.tsx`; Grid-Regeln in `globals.css`).
     Markdown über react-markdown – rohes HTML wird nicht gerendert.

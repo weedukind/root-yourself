@@ -174,24 +174,24 @@ function updateElements(draft: Draft, row: number, cell: number, update: (elemen
   return updateCells(draft, row, (cells) => replaceAt(cells, cell, { ...cells[cell], elements: update(cells[cell].elements) }));
 }
 
-export type NewElement =
-  | { type: "heading" }
-  | { type: "text" }
-  | { type: "image"; media: MediaRef };
-
-export function createElement(spec: NewElement): DraftElement {
-  switch (spec.type) {
+/** Leeres Element; ein Bild hat noch keins (mediaId ""), es wird im Formular gewählt. */
+export function createElement(type: DraftElement["type"]): DraftElement {
+  switch (type) {
     case "heading":
       return { key: newKey(), type: "heading", data: { level: 2, text: "" } };
     case "text":
       return { key: newKey(), type: "text", data: { markdown: "" } };
     case "image":
-      return { key: newKey(), type: "image", data: {}, mediaId: spec.media.id, media: spec.media };
+      return { key: newKey(), type: "image", data: {}, mediaId: "", media: { id: "", url: "", width: 0, height: 0, alt: "" } };
   }
 }
 
 export const addElement = (draft: Draft, row: number, cell: number, element: DraftElement): Draft =>
   updateElements(draft, row, cell, (elements) => [...elements, element]);
+
+/** Fügt ein Element an der Stelle `index` einer Zelle ein. */
+export const insertElement = (draft: Draft, row: number, cell: number, index: number, element: DraftElement): Draft =>
+  updateElements(draft, row, cell, (elements) => [...elements.slice(0, index), element, ...elements.slice(index)]);
 
 export const updateElement = (draft: Draft, path: ElementPath, element: DraftElement): Draft =>
   updateElements(draft, path.row, path.cell, (elements) => replaceAt(elements, path.index, element));

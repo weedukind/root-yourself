@@ -78,7 +78,7 @@ describe("fromVersion / toInput", () => {
   });
 
   it("neue Elemente haben keine id", () => {
-    const draft = addElement(fromVersion(version), 0, 0, createElement({ type: "heading" }));
+    const draft = addElement(fromVersion(version), 0, 0, createElement("heading"));
     const elements = toInput(draft, "").rows[0].cells[0].elements;
     expect(elements[1]).toEqual({ id: undefined, type: "heading", data: { level: 2, text: "" } });
   });

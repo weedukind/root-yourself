@@ -2,27 +2,8 @@
 
 import { MAX_GRID } from "@/shared/api/versions";
 import { inputClass, secondaryButton } from "../ui";
-import {
-  addCell,
-  addElement,
-  addRow,
-  cellTargets,
-  createElement,
-  type Draft,
-  type DraftRow,
-  type ElementPath,
-  moveCell,
-  moveElementToCell,
-  moveElementWithinCell,
-  moveRow,
-  removeCell,
-  removeElement,
-  removeRow,
-  resizeCell,
-  resizeGrid,
-  updateElement,
-} from "./draft";
-import { ElementForm, elementLabel, MediaPicker } from "./element-editor";
+import { CellElements } from "./cell-elements";
+import { addCell, addRow, type Draft, type DraftRow, moveCell, moveRow, removeCell, removeRow, resizeCell, resizeGrid } from "./draft";
 import { fitsGrid, freeSlots, placeCells } from "@/shared/grid-placement";
 
 // Bearbeitung des Layouts: Rows → Zellen → Elemente. Alle Änderungen laufen über die reinen
@@ -69,8 +50,6 @@ function SizeSelect({
 }
 
 export function LayoutEditor({ draft, update, readOnly }: { draft: Draft; update: Update; readOnly: boolean }) {
-  const targets = cellTargets(draft);
-
   return (
     <div className="space-y-4">
       {draft.rows.length === 0 && <p className="text-sm text-zinc-500">Noch keine Rows.</p>}
@@ -186,64 +165,7 @@ export function LayoutEditor({ draft, update, readOnly }: { draft: Draft; update
                     )}
                   </div>
 
-                  {cell.elements.map((element, i) => {
-                    const path: ElementPath = { row: r, cell: c, index: i };
-                    return (
-                      <div key={element.key} className="space-y-1 rounded border border-zinc-200 bg-white p-2">
-                        <div className="flex flex-wrap items-center gap-1">
-                          <span className="text-xs font-medium text-zinc-500">{elementLabel(element)}</span>
-                          {!readOnly && (
-                            <div className="ml-auto flex flex-wrap gap-1">
-                              <button type="button" className={small} disabled={i === 0} onClick={() => update((d) => moveElementWithinCell(d, path, -1))} aria-label="Element nach oben">
-                                ↑
-                              </button>
-                              <button type="button" className={small} disabled={i === cell.elements.length - 1} onClick={() => update((d) => moveElementWithinCell(d, path, 1))} aria-label="Element nach unten">
-                                ↓
-                              </button>
-                              {targets.length > 1 && (
-                                <select
-                                  aria-label="In andere Zelle verschieben"
-                                  className={`${inputClass} py-0 text-xs`}
-                                  value=""
-                                  onChange={(e) => {
-                                    const target = targets[Number(e.target.value)];
-                                    update((d) => moveElementToCell(d, path, target));
-                                  }}
-                                >
-                                  <option value="" disabled>
-                                    Verschieben nach …
-                                  </option>
-                                  {targets.map((t, index) =>
-                                    t.row === r && t.cell === c ? null : (
-                                      <option key={t.label} value={index}>
-                                        {t.label}
-                                      </option>
-                                    ),
-                                  )}
-                                </select>
-                              )}
-                              <button type="button" className={small} onClick={() => update((d) => removeElement(d, path))} aria-label="Element entfernen">
-                                ✕
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                        <ElementForm element={element} readOnly={readOnly} onChange={(next) => update((d) => updateElement(d, path, next))} />
-                      </div>
-                    );
-                  })}
-
-                  {!readOnly && (
-                    <div className="flex flex-wrap gap-1">
-                      <button type="button" className={small} onClick={() => update((d) => addElement(d, r, c, createElement({ type: "heading" })))}>
-                        + Überschrift
-                      </button>
-                      <button type="button" className={small} onClick={() => update((d) => addElement(d, r, c, createElement({ type: "text" })))}>
-                        + Text
-                      </button>
-                      <MediaPicker label="+ Bild" buttonClass={small} onPick={(media) => update((d) => addElement(d, r, c, createElement({ type: "image", media })))} />
-                    </div>
-                  )}
+                  <CellElements draft={draft} update={update} row={r} cell={c} readOnly={readOnly} />
                 </div>
               ))}
             </div>
