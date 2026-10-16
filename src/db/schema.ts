@@ -35,17 +35,43 @@ export const tags = pgTable("tags", {
   ...timestamps,
 });
 
-export const media = pgTable("media", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  storageKey: text("storage_key").notNull().unique(),
-  filename: text("filename").notNull(),
-  mimeType: text("mime_type").notNull(),
-  sizeBytes: integer("size_bytes").notNull(),
-  width: integer("width").notNull(),
-  height: integer("height").notNull(),
-  alt: text("alt").notNull().default(""),
-  ...timestamps,
-});
+// Ordner der Mediathek, beliebig tief verschachtelt; parent_id null heißt oberste Ebene.
+// Namen sind je Elternordner eindeutig (NULLS NOT DISTINCT: auch auf der obersten Ebene).
+// RESTRICT: Nur leere Ordner lassen sich löschen. Zyklen beim Verschieben verhindert der Service.
+export const mediaFolders = pgTable(
+  "media_folders",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    parentId: uuid("parent_id").references((): AnyPgColumn => mediaFolders.id, { onDelete: "restrict" }),
+    name: text("name").notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    unique("media_folders_parent_name_unique").on(t.parentId, t.name).nullsNotDistinct(),
+    check("media_folders_name_check", sql`length(trim(${t.name})) > 0`),
+    check("media_folders_not_own_parent_check", sql`${t.parentId} IS DISTINCT FROM ${t.id}`),
+  ],
+);
+
+export const media = pgTable(
+  "media",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Jedes Bild liegt in genau einem Ordner.
+    folderId: uuid("folder_id")
+      .notNull()
+      .references(() => mediaFolders.id, { onDelete: "restrict" }),
+    storageKey: text("storage_key").notNull().unique(),
+    filename: text("filename").notNull(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    alt: text("alt").notNull().default(""),
+    ...timestamps,
+  },
+  (t) => [index("media_folder_idx").on(t.folderId)],
+);
 
 // Tags gelten für Posts (pro Version, siehe version_tags) und für Medien. Medien sind nicht
 // versioniert, daher eine einfache Zuordnung.

@@ -1,18 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { cellElements, cells, elements, posts, rows, tags, versions } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { withRollback } from "../../../test/db";
+import { createFolder, withRollback } from "../../../test/db";
 import { memoryStorage } from "../../../test/memory-storage";
 import { confirmUpload, deleteMedia, listMedia, prepareUpload, updateMedia } from "./media";
 
 const input = { filename: "wurzel.jpg", mimeType: "image/jpeg" as const, size: 1234 };
 
-async function uploaded(db: Db, mem: ReturnType<typeof memoryStorage>) {
+async function uploaded(db: Db, mem: ReturnType<typeof memoryStorage>, folderId?: string) {
   const prepared = await prepareUpload(mem.storage, input);
   if (!prepared.ok) throw new Error(prepared.error.message);
   mem.upload(prepared.value.key, "image/jpeg", 1234);
   const confirmed = await confirmUpload(db, mem.storage, {
     key: prepared.value.key,
+    folderId: folderId ?? (await createFolder(db)),
     filename: "wurzel.jpg",
     width: 800,
     height: 600,
@@ -54,7 +55,7 @@ describe("confirmUpload", () => {
   it("lehnt fremde Schlüssel ab", () =>
     withRollback(async (db) => {
       const { storage } = memoryStorage();
-      const result = await confirmUpload(db, storage, { key: "../geheim.jpg", filename: "x", width: 1, height: 1 });
+      const result = await confirmUpload(db, storage, { key: "../geheim.jpg", folderId: crypto.randomUUID(), filename: "x", width: 1, height: 1 });
       expect(result).toMatchObject({ ok: false, error: { code: "key_invalid" } });
     }));
 
@@ -63,7 +64,7 @@ describe("confirmUpload", () => {
       const mem = memoryStorage();
       const prepared = await prepareUpload(mem.storage, input);
       if (!prepared.ok) return;
-      const result = await confirmUpload(db, mem.storage, { key: prepared.value.key, filename: "x", width: 1, height: 1 });
+      const result = await confirmUpload(db, mem.storage, { key: prepared.value.key, folderId: crypto.randomUUID(), filename: "x", width: 1, height: 1 });
       expect(result).toMatchObject({ ok: false, error: { code: "upload_missing" } });
     }));
 
@@ -73,7 +74,7 @@ describe("confirmUpload", () => {
       const prepared = await prepareUpload(mem.storage, input);
       if (!prepared.ok) return;
       mem.upload(prepared.value.key, "text/html", 10);
-      const result = await confirmUpload(db, mem.storage, { key: prepared.value.key, filename: "x", width: 1, height: 1 });
+      const result = await confirmUpload(db, mem.storage, { key: prepared.value.key, folderId: crypto.randomUUID(), filename: "x", width: 1, height: 1 });
       expect(result).toMatchObject({ ok: false, error: { code: "upload_invalid" } });
       expect(mem.objects.has(prepared.value.key)).toBe(false);
     }));
@@ -82,8 +83,27 @@ describe("confirmUpload", () => {
     withRollback(async (db) => {
       const mem = memoryStorage();
       const medium = await uploaded(db, mem);
-      const again = await confirmUpload(db, mem.storage, { key: medium.key, filename: "x", width: 1, height: 1 });
+      const again = await confirmUpload(db, mem.storage, { key: medium.key, folderId: medium.folderId, filename: "x", width: 1, height: 1 });
       expect(again).toMatchObject({ ok: false, error: { code: "already_registered" } });
+    }));
+
+  it("legt das Bild in den angegebenen Ordner und lehnt unbekannte Ordner ab", () =>
+    withRollback(async (db) => {
+      const mem = memoryStorage();
+      const folderId = await createFolder(db);
+      expect(await uploaded(db, mem, folderId)).toMatchObject({ folderId });
+
+      const prepared = await prepareUpload(mem.storage, input);
+      if (!prepared.ok) return;
+      mem.upload(prepared.value.key, "image/jpeg", 1234);
+      const result = await confirmUpload(db, mem.storage, {
+        key: prepared.value.key,
+        folderId: crypto.randomUUID(),
+        filename: "x",
+        width: 1,
+        height: 1,
+      });
+      expect(result).toMatchObject({ ok: false, error: { code: "folder_unknown", field: "folderId" } });
     }));
 });
 
@@ -99,6 +119,41 @@ describe("listMedia", () => {
         [false, 0],
         [true, 1],
       ]);
+    }));
+});
+
+describe("Ordner", () => {
+  it("listet die Bilder eines Ordners, auch kombiniert mit einem Tag", () =>
+    withRollback(async (db) => {
+      const mem = memoryStorage();
+      const [a, b] = [await createFolder(db, "A"), await createFolder(db, "B")];
+      const inA = await uploaded(db, mem, a);
+      await uploaded(db, mem, b);
+      const [tag] = await db.insert(tags).values({ name: "Wurzeln", slug: "wurzeln" }).returning();
+      await updateMedia(db, mem.storage, inA.id, { tagIds: [tag.id], updatedAt: inA.updatedAt });
+
+      expect((await listMedia(db, mem.storage, { folderId: a })).map((m) => m.id)).toEqual([inA.id]);
+      expect(await listMedia(db, mem.storage, { folderId: b, tagId: tag.id })).toEqual([]);
+    }));
+
+  it("verschiebt ein Bild in einen anderen Ordner", () =>
+    withRollback(async (db) => {
+      const mem = memoryStorage();
+      const target = await createFolder(db);
+      const medium = await uploaded(db, mem);
+      const moved = await updateMedia(db, mem.storage, medium.id, { folderId: target, updatedAt: medium.updatedAt });
+      expect(moved).toMatchObject({ ok: true, value: { folderId: target, alt: "" } });
+    }));
+
+  it("lehnt einen unbekannten Zielordner ab", () =>
+    withRollback(async (db) => {
+      const mem = memoryStorage();
+      const medium = await uploaded(db, mem);
+      const result = await updateMedia(db, mem.storage, medium.id, {
+        folderId: crypto.randomUUID(),
+        updatedAt: medium.updatedAt,
+      });
+      expect(result).toMatchObject({ ok: false, error: { code: "folder_unknown", field: "folderId" } });
     }));
 });
 

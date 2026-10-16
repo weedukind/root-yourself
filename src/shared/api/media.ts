@@ -31,6 +31,7 @@ export const prepareUploadInput = z.object({
 
 export const createMediaInput = z.object({
   key: z.string(),
+  folderId: z.uuid(),
   filename,
   width: z.number().int().positive(),
   height: z.number().int().positive(),
@@ -40,6 +41,8 @@ export const createMediaInput = z.object({
 export const updateMediaInput = z
   .object({
     alt: alt.optional(),
+    // Verschiebt das Bild in einen anderen Ordner.
+    folderId: z.uuid().optional(),
     // Ersetzt die Tags des Bildes vollständig.
     tagIds: z
       .array(z.uuid())
@@ -49,13 +52,36 @@ export const updateMediaInput = z
     // Überschreib-Schutz: Stand, auf dem die Änderung beruht.
     updatedAt: z.iso.datetime(),
   })
-  .refine((input) => input.alt !== undefined || input.tagIds !== undefined, "Nichts zu ändern");
+  .refine(
+    (input) => input.alt !== undefined || input.folderId !== undefined || input.tagIds !== undefined,
+    "Nichts zu ändern",
+  );
 
-export const listMediaQuery = z.object({ tag: z.uuid().optional() });
+/** ?folder=<id>: Bilder dieses Ordners (ohne Unterordner); ?tag=<id>: mit diesem Tag. Beides kombinierbar. */
+export const listMediaQuery = z.object({ folder: z.uuid().optional(), tag: z.uuid().optional() });
+
+const folderName = z.string().trim().min(1, "Bitte einen Namen angeben").max(100, "Höchstens 100 Zeichen");
+
+export const createFolderInput = z.object({
+  name: folderName,
+  /** null: oberste Ebene. */
+  parentId: z.uuid().nullable(),
+});
+
+export const updateFolderInput = z
+  .object({
+    name: folderName.optional(),
+    /** Verschieben; null: auf die oberste Ebene. */
+    parentId: z.uuid().nullable().optional(),
+    updatedAt: z.iso.datetime(),
+  })
+  .refine((input) => input.name !== undefined || input.parentId !== undefined, "Nichts zu ändern");
 
 export type PrepareUploadInput = z.infer<typeof prepareUploadInput>;
 export type CreateMediaInput = z.input<typeof createMediaInput>;
 export type UpdateMediaInput = z.infer<typeof updateMediaInput>;
+export type CreateFolderInput = z.infer<typeof createFolderInput>;
+export type UpdateFolderInput = z.infer<typeof updateFolderInput>;
 
 export type PreparedUpload = {
   key: string;
@@ -66,6 +92,7 @@ export type PreparedUpload = {
 
 export type Media = {
   id: string;
+  folderId: string;
   key: string;
   url: string;
   filename: string;
@@ -82,4 +109,16 @@ export type Media = {
 export type MediaWithUsage = Media & {
   /** Anzahl der Versionen, die das Bild verwenden – auch eingefrorene. */
   versionCount: number;
+};
+
+export type MediaFolder = {
+  id: string;
+  parentId: string | null;
+  name: string;
+  /** Bilder direkt in diesem Ordner. */
+  mediaCount: number;
+  /** Unterordner direkt in diesem Ordner. */
+  folderCount: number;
+  createdAt: string;
+  updatedAt: string;
 };

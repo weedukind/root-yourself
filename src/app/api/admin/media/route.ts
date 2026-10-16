@@ -5,11 +5,11 @@ import { getStorage } from "@/server/media/storage";
 import { ok } from "@/server/result";
 import { createMediaInput, listMediaQuery } from "@/shared/api/media";
 
-/** Mediathek, optional gefiltert: ?tag=<id> */
+/** Mediathek, optional gefiltert: ?folder=<id>, ?tag=<id> */
 export async function GET(request: Request) {
   const query = validate(listMediaQuery, Object.fromEntries(new URL(request.url).searchParams));
   if (!query.ok) return toResponse(query);
-  return toResponse(ok(await listMedia(db, getStorage(), { tagId: query.value.tag })));
+  return toResponse(ok(await listMedia(db, getStorage(), { folderId: query.value.folder, tagId: query.value.tag })));
 }
 
 /** Upload bestätigen: Die Datei liegt bereits im Speicher (siehe ./uploads). */

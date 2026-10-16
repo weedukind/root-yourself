@@ -13,7 +13,7 @@ import {
   type UpdateMediaInput,
 } from "@/shared/api/media";
 import type { TagRef } from "@/shared/api/tags";
-import { foreignKeyViolation, restrictViolation, uniqueViolation } from "../db-errors";
+import { foreignKeyConstraint, foreignKeyViolation, restrictViolation, uniqueViolation } from "../db-errors";
 import { conflict, invalid, notFound, ok, type Result } from "../result";
 import type { MediaStorage } from "./storage";
 
@@ -31,6 +31,7 @@ const KEY_PATTERN = new RegExp(
 
 const toMedia = (row: MediaRow, storage: MediaStorage, tagRefs: TagRef[] = []): Media => ({
   id: row.id,
+  folderId: row.folderId,
   key: row.storageKey,
   url: storage.publicUrl(row.storageKey),
   filename: row.filename,
@@ -92,6 +93,7 @@ export async function confirmUpload(
       tx
         .insert(media)
         .values({
+          folderId: input.folderId,
           storageKey: input.key,
           filename: input.filename,
           mimeType: object.contentType,
@@ -107,6 +109,8 @@ export async function confirmUpload(
     if (uniqueViolation(error) === "media_storage_key_unique") {
       return conflict("already_registered", "Diese Datei ist bereits in der Mediathek", "key");
     }
+    // Die Datei bleibt im Speicher: Mit einem gültigen Ordner lässt sich der Upload erneut bestätigen.
+    if (foreignKeyViolation(error)) return invalid("folder_unknown", "Der Ordner existiert nicht", "folderId");
     throw error;
   }
 }
@@ -114,7 +118,7 @@ export async function confirmUpload(
 export async function listMedia(
   db: Db,
   storage: MediaStorage,
-  filter: { tagId?: string } = {},
+  filter: { folderId?: string; tagId?: string } = {},
 ): Promise<MediaWithUsage[]> {
   const rows = await db
     .select({ media, versionCount: countDistinct(cellElements.versionId) })
@@ -122,9 +126,12 @@ export async function listMedia(
     .leftJoin(elements, eq(elements.mediaId, media.id))
     .leftJoin(cellElements, eq(cellElements.elementId, elements.id))
     .where(
-      filter.tagId
-        ? inArray(media.id, db.select({ id: mediaTags.mediaId }).from(mediaTags).where(eq(mediaTags.tagId, filter.tagId)))
-        : undefined,
+      and(
+        filter.folderId ? eq(media.folderId, filter.folderId) : undefined,
+        filter.tagId
+          ? inArray(media.id, db.select({ id: mediaTags.mediaId }).from(mediaTags).where(eq(mediaTags.tagId, filter.tagId)))
+          : undefined,
+      ),
     )
     .groupBy(media.id)
     .orderBy(desc(media.createdAt), desc(media.id));
@@ -144,12 +151,12 @@ export async function updateMedia(
 ): Promise<Result<Media>> {
   let row: MediaRow | undefined;
   try {
-    // Alt-Text und Tags gemeinsam oder gar nicht; zugleich Savepoint, falls ein Tag unbekannt ist.
+    // Alt-Text, Ordner und Tags gemeinsam oder gar nicht; zugleich Savepoint, falls ein Verweis ins Leere geht.
     row = await db.transaction(async (tx) => {
       // clock_timestamp() statt now(): now() ist innerhalb einer Transaktion konstant.
       const [updated] = await tx
         .update(media)
-        .set({ alt: input.alt, updatedAt: sql`clock_timestamp()` })
+        .set({ alt: input.alt, folderId: input.folderId, updatedAt: sql`clock_timestamp()` })
         .where(and(eq(media.id, id), eq(media.updatedAt, new Date(input.updatedAt))))
         .returning();
       if (updated && input.tagIds) {
@@ -161,7 +168,12 @@ export async function updateMedia(
       return updated;
     });
   } catch (error) {
-    if (foreignKeyViolation(error)) return invalid("tag_unknown", "Ein angegebener Tag existiert nicht", "tagIds");
+    switch (foreignKeyConstraint(error)) {
+      case "media_folder_id_media_folders_id_fk":
+        return invalid("folder_unknown", "Der Ordner existiert nicht", "folderId");
+      case "media_tags_tag_id_tags_id_fk":
+        return invalid("tag_unknown", "Ein angegebener Tag existiert nicht", "tagIds");
+    }
     throw error;
   }
   if (row) return ok(toMedia(row, storage, (await loadTags(db, [id])).get(id)));

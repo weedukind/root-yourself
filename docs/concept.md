@@ -57,7 +57,9 @@ Next.js-App. Es gibt genau eine Person, die Posts schreibt.
   dasselbe Element verwenden (Copy-on-Write).
 - **Tag**: Name und Slug. Gemeinsam für Posts und Medien: an Posts als
   Metadaten pro Version, an Medien zum Ordnen der Mediathek (nicht versioniert).
-- **Medium**: Bild in R2, verwaltet über die Mediathek.
+- **Medium**: Bild in R2, verwaltet über die Mediathek. Liegt in genau einem Ordner.
+- **Ordner**: ordnet die Mediathek, beliebig verschachtelt; Namen je Elternordner
+  eindeutig. Nicht versioniert.
 
 ## Seitenlayout
 
@@ -498,10 +500,14 @@ Alle Antworten sind JSON. Fehler haben immer die Form
 | `PATCH` | `/tags/:id` | Umbenennen `{ name?, slug?, updatedAt }`; der Slug bleibt beim Umbenennen erhalten und ändert sich nur ausdrücklich |
 | `DELETE` | `/tags/:id` | Löschen |
 | `POST` | `/media/uploads` | Upload vorbereiten `{ filename, mimeType, size }` → `{ uploadUrl, key }` |
-| `POST` | `/media` | Upload bestätigen `{ key, filename, width, height, alt }` |
-| `GET` | `/media` | Mediathek mit Tags und Nutzung, neueste zuerst; Filter `?tag=<id>` |
-| `PATCH` | `/media/:id` | Alt-Text und/oder Tags ändern `{ alt?, tagIds?, updatedAt }`; `tagIds` ersetzt alle Tags |
+| `POST` | `/media` | Upload bestätigen `{ key, folderId, filename, width, height, alt }` |
+| `GET` | `/media` | Mediathek mit Tags und Nutzung, neueste zuerst; Filter `?folder=<id>` (nur direkt im Ordner) und/oder `?tag=<id>` |
+| `PATCH` | `/media/:id` | Alt-Text, Ordner (verschieben) und/oder Tags ändern `{ alt?, folderId?, tagIds?, updatedAt }`; `tagIds` ersetzt alle Tags |
 | `DELETE` | `/media/:id` | Löschen (`409`, wenn verwendet) |
+| `GET` | `/media/folders` | Alle Ordner flach mit `parentId`, `mediaCount` und `folderCount` (jeweils direkt darin) |
+| `POST` | `/media/folders` | Anlegen `{ name, parentId }`; `parentId: null` = oberste Ebene |
+| `PATCH` | `/media/folders/:id` | Umbenennen und/oder verschieben `{ name?, parentId?, updatedAt }`; nicht in sich selbst oder eigene Unterordner (`folder_cycle`) |
+| `DELETE` | `/media/folders/:id` | Löschen, nur leer (`409 folder_not_empty`) |
 | `GET` | `/posts` | Alle Posts, zuletzt geänderte zuerst: Titel (der veröffentlichten, sonst der zuletzt geänderten Version), veröffentlichte Version, Anzahl Versionen und bearbeitbarer Versionen |
 | `POST` | `/posts` | Post mit Version 1 anlegen `{ title, slug? }`; ohne Slug aus dem Titel erzeugt. Übernimmt der Slug eine alte Weiterleitung, entfällt diese |
 | `GET` | `/posts/:id` | Post mit Versionen (ID, Nummer, Eltern, Titel, veröffentlicht, Blatt, bearbeitbar, `updatedAt`) und früheren Slugs |
@@ -630,6 +636,13 @@ einem Vorschau-Balken (Version, veröffentlicht oder nicht, Gültigkeit).
   enthalten).
 - Löschen: erst der Datenbankeintrag, dann die Datei. Scheitert das Löschen
   der Datei, bleibt höchstens eine verwaiste Datei, nie ein Eintrag ohne Datei.
+- Ordner (`media_folders`, `parent_id` auf sich selbst): Jedes Bild liegt in
+  einem Ordner, auf der obersten Ebene stehen nur Ordner. Namen sind je
+  Elternordner eindeutig (`UNIQUE NULLS NOT DISTINCT`, also auch oben). Nur
+  leere Ordner lassen sich löschen (`ON DELETE RESTRICT` von Bildern und
+  Unterordnern). Beim Verschieben verhindert der Service Zyklen; eine
+  Tabellensperre schließt gleichzeitige Gegen-Verschiebungen aus.
+  Migration `0006` legte vorhandene Bilder in den Ordner „Unsortiert“.
 - Hochgeladene, aber nie bestätigte Dateien bleiben im Bucket liegen. Bei R2
   räumt eine Lifecycle-Regel das später auf (offen).
 
@@ -680,9 +693,27 @@ einem Vorschau-Balken (Version, veröffentlicht oder nicht, Gültigkeit).
   zurückziehen, Version löschen, Slug ändern, Vorschau. Eingefrorene Versionen
   nur lesend.
 - Tags: anlegen, umbenennen, löschen (mit Anzeige der Nutzung in Posts und Medien).
-- Mediathek: Upload (Presigned URL → R2, Breite/Höhe im Browser ermittelt),
-  Alt-Text bearbeiten, Tags zuordnen, nach Tag filtern, löschen (nur nicht
-  verwendete Bilder).
+- Mediathek: Ordnerbaum links, rechts der gewählte Ordner mit Pfad und
+  Bildern (`?folder=<id>` in der Adresse). Kontextmenü im Baum (Rechtsklick
+  oder „⋯“): Umbenennen, Unterordner erstellen, Ausschneiden/Einfügen
+  (Verschieben; „Einfügen“ nur, wo `canMoveFolder` es erlaubt; „Alle Ordner“
+  hat ein Menü zum Einfügen auf der obersten Ebene), Löschen (nur leere),
+  direkt im Baum. Tastenkürzel auf dem Ordner mit dem Fokus: F2 Umbenennen,
+  N Unterordner, Strg/⌘+X Ausschneiden, Strg/⌘+V Einfügen (auf „Alle Ordner“:
+  oberste Ebene), Entf bzw. ⌘⌫ Löschen, Esc hebt das Ausschneiden auf.
+  Gesperrte Aktionen zeigen den Grund unter dem Ordner. Ordner am Griff vor dem Namen (erscheint beim Überfahren; nur er ist
+  ziehbar) auf einen anderen Ordner oder auf „Alle Ordner“ (oberste Ebene)
+  ziehen; das Ziel klappt danach auf; er selbst, seine Unterordner und sein jetziger Platz
+  nehmen nichts an (`canMoveFolder`), der Server prüft Zyklen zusätzlich.
+  Ordner mit Unterordnern lassen sich auf- und zuklappen (▸/▾); der Browser
+  merkt sich das (localStorage), der Weg zum geöffneten Ordner ist immer offen,
+  beim Ziehen klappt ein zugeklappter Ordner nach kurzem Verweilen auf.
+  Neue Ordner auf der obersten Ebene über „+“ neben „Alle Ordner“. Rechts nur
+  Pfad, Upload, Filter und Bilder. Upload in den geöffneten Ordner
+  (Presigned URL → R2, Breite/Höhe im Browser ermittelt), Bild in anderen
+  Ordner verschieben, Alt-Text bearbeiten, Tags zuordnen, nach Tag filtern
+  (im Ordner; auf der obersten Ebene über alle Ordner), löschen (nur nicht
+  verwendete Bilder). Die Bildauswahl im Editor filtert nach Ordner.
 - Versions-Editor unter `/admin/posts/[id]/versions/[vid]`:
   - Titel, Tags, Rows („+ Row“ legt 1 Spalte mit einer Zelle an; Grid-Größe
     änderbar; freie Felder des Grids werden angezeigt), Zellen (Größe, Reihenfolge), Elemente (hinzufügen,
