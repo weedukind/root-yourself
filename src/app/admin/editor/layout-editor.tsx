@@ -1,7 +1,7 @@
 "use client";
 
 import { MAX_GRID } from "@/shared/api/versions";
-import { inputClass, secondaryButton } from "../ui";
+import { inputClass, secondaryButton, smallButton as small } from "../ui";
 import { CellElements } from "./cell-elements";
 import { addCell, addRow, type Draft, type DraftRow, moveCell, moveRow, removeCell, removeRow, resizeCell, resizeGrid } from "./draft";
 import { fitsGrid, freeSlots, placeCells } from "@/shared/grid-placement";
@@ -11,7 +11,6 @@ import { fitsGrid, freeSlots, placeCells } from "@/shared/grid-placement";
 
 type Update = (change: (draft: Draft) => Draft) => void;
 
-const small = `${secondaryButton} px-2 py-0.5 text-xs`;
 const sizes = (max: number) => Array.from({ length: max }, (_, i) => i + 1);
 
 /** Das Grid wächst bei Änderungen mit (siehe growToFit) – aber höchstens bis MAX_GRID Zeilen. */

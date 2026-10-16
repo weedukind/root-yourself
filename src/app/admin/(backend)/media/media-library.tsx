@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ApiError } from "@/shared/api/errors";
 import {
   IMAGE_TYPES,
@@ -14,16 +14,15 @@ import {
 import type { TagRef, TagWithUsage } from "@/shared/api/tags";
 import { api, type ApiResult } from "@/app/admin/api-client";
 import { pathLabel, pathOf } from "@/app/admin/media-folders";
-import { ErrorText, inputClass, primaryButton, secondaryButton } from "@/app/admin/ui";
+import { InlineEdit } from "@/app/admin/inline-edit";
+import { Modal } from "@/app/admin/modal";
+import { ErrorText, iconButton, inputClass, primaryButton, primaryIconButton, secondaryButton } from "@/app/admin/ui";
 import { type Clipboard, FolderTree } from "./folder-tree";
 
 const ACCEPT = Object.keys(IMAGE_TYPES).join(",");
 
 const formatSize = (bytes: number) =>
   bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-
-const iconButtonBase = "rounded border p-1.5 disabled:opacity-40";
-const iconButton = `${iconButtonBase} border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100 disabled:hover:bg-white`;
 
 const countLabel = (n: number) => (n === 1 ? "1 Bild" : `${n} Bilder`);
 
@@ -348,14 +347,9 @@ type UploadStatus = { name: string; state: "läuft" | "fertig" | "fehler"; error
 
 /** „Bilder hochladen“ öffnet ein Popup mit dem Formular. Schließt sich selbst, wenn alles geklappt hat. */
 function Uploader({ folder, onUploaded }: { folder: MediaFolder; onUploaded: () => Promise<void> }) {
-  const dialog = useRef<HTMLDialogElement>(null);
+  const [open, setOpen] = useState(false);
   const [statuses, setStatuses] = useState<UploadStatus[]>([]);
   const busy = statuses.some((s) => s.state === "läuft");
-
-  function open() {
-    setStatuses([]);
-    dialog.current?.showModal();
-  }
 
   async function upload(files: File[]) {
     setStatuses(files.map((f) => ({ name: f.name, state: "läuft" })));
@@ -371,51 +365,31 @@ function Uploader({ folder, onUploaded }: { folder: MediaFolder; onUploaded: () 
       }),
     );
     await onUploaded();
-    if (results.every(Boolean)) dialog.current?.close();
+    if (results.every(Boolean)) setOpen(false);
   }
 
   return (
     <>
       <button
         type="button"
-        className={`${iconButtonBase} border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-700`}
+        className={primaryIconButton}
         aria-label="Bilder hochladen"
         title="Bilder hochladen"
-        onClick={open}
+        onClick={() => {
+          setStatuses([]);
+          setOpen(true);
+        }}
       >
         <Icon d={UPLOAD_ICON} />
       </button>
-      <dialog
-        ref={dialog}
-        aria-labelledby="upload-title"
-        // Während des Uploads nicht schließen (Escape).
-        onCancel={(e) => {
-          if (busy) e.preventDefault();
-        }}
-        // Klick auf den abgedunkelten Hintergrund schließt (das Ereignis kommt dann vom dialog selbst).
-        onClick={(e) => {
-          if (e.target === dialog.current && !busy) dialog.current.close();
-        }}
-        className="m-auto w-full max-w-md rounded border border-zinc-200 bg-white p-0 text-zinc-900 shadow-xl backdrop:bg-black/40"
-      >
-        <div className="space-y-4 p-5">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 id="upload-title" className="text-lg font-semibold">
-                Bilder hochladen
-              </h2>
-              <p className="text-sm text-zinc-600">In den Ordner „{folder.name}“</p>
-            </div>
-            <button
-              type="button"
-              aria-label="Schließen"
-              className="rounded px-2 text-xl leading-none text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-30"
-              disabled={busy}
-              onClick={() => dialog.current?.close()}
-            >
-              ×
-            </button>
-          </div>
+      {open && (
+        <Modal
+          title="Bilder hochladen"
+          description={`In den Ordner „${folder.name}“`}
+          // Während des Uploads nicht schließen.
+          locked={busy}
+          onClose={() => setOpen(false)}
+        >
           <div className="space-y-2">
             <label className="sr-only" htmlFor="upload">
               Bilder auswählen
@@ -444,8 +418,8 @@ function Uploader({ folder, onUploaded }: { folder: MediaFolder; onUploaded: () 
               ))}
             </ul>
           )}
-        </div>
-      </dialog>
+        </Modal>
+      )}
     </>
   );
 }
@@ -524,24 +498,15 @@ function AltText({
   onError: (error: ApiError | null) => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [alt, setAlt] = useState(item.alt);
-  const [busy, setBusy] = useState(false);
-
-  function startEdit() {
-    setAlt(item.alt);
-    setEditing(true);
-  }
 
   function cancel() {
     setEditing(false);
     onError(null);
   }
 
-  async function save() {
+  async function save(alt: string) {
     if (alt === item.alt) return setEditing(false);
-    setBusy(true);
     const result = await api<Media>(`/media/${item.id}`, { method: "PATCH", body: { alt, updatedAt: item.updatedAt } });
-    setBusy(false);
     if (!result.ok) return onError(result.error);
     onError(null);
     setEditing(false);
@@ -550,26 +515,12 @@ function AltText({
 
   if (editing) {
     return (
-      <input
-        aria-label={`Alt-Text von ${item.filename}`}
-        className={`${inputClass} w-full`}
+      <InlineEdit
+        label={`Alt-Text von ${item.filename}`}
+        initial={item.alt}
         placeholder="Alt-Text (Bildbeschreibung)"
-        value={alt}
-        // readOnly statt disabled: Ein gesperrtes Feld verliert den Fokus, danach greift Escape nicht mehr.
-        readOnly={busy}
-        autoFocus
-        onFocus={(e) => e.target.select()}
-        onChange={(e) => setAlt(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            void save();
-          }
-          if (e.key === "Escape") cancel();
-        }}
-        onBlur={() => {
-          if (!busy) cancel();
-        }}
+        onSubmit={save}
+        onCancel={cancel}
       />
     );
   }
@@ -580,11 +531,11 @@ function AltText({
       tabIndex={0}
       title="Doppelklick zum Bearbeiten"
       aria-label={`Alt-Text von ${item.filename}: ${item.alt || "leer"}. Enter zum Bearbeiten`}
-      onDoubleClick={startEdit}
+      onDoubleClick={() => setEditing(true)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === "F2") {
           e.preventDefault();
-          startEdit();
+          setEditing(true);
         }
       }}
       className="cursor-text rounded px-1 py-0.5 text-sm select-none hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"

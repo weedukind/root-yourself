@@ -5,7 +5,9 @@ import type { ApiError } from "@/shared/api/errors";
 import type { MediaFolder } from "@/shared/api/media";
 import { api } from "@/app/admin/api-client";
 import { canMoveFolder, childrenOf, pathOf } from "@/app/admin/media-folders";
-import { ErrorText, inputClass } from "@/app/admin/ui";
+import { InlineEdit } from "@/app/admin/inline-edit";
+import { ErrorText } from "@/app/admin/ui";
+import { useDismiss } from "@/app/admin/use-dismiss";
 
 // Ordnerbaum der Mediathek mit Kontextmenü (Rechtsklick oder „⋯“): Umbenennen, Unterordner
 // erstellen, Ausschneiden/Einfügen (Verschieben), Löschen (nur leere Ordner). „Alle Ordner“ hat
@@ -409,7 +411,7 @@ function Branch({ parentId, context }: { parentId: string | null; context: Conte
     <ul className={parentId ? "ml-3 border-l border-zinc-200 pl-2" : ""}>
       {creating && (
         <li>
-          <NameInput
+          <FolderNameInput
             label={parentId ? "Name des neuen Unterordners" : "Name des neuen Ordners"}
             initial=""
             onCancel={context.cancel}
@@ -444,7 +446,7 @@ function FolderItem({ folder, context }: { folder: MediaFolder; context: Context
   return (
     <li>
       {renaming ? (
-        <NameInput
+        <FolderNameInput
           label="Neuer Name"
           initial={folder.name}
           onCancel={context.cancel}
@@ -545,49 +547,11 @@ function FolderItem({ folder, context }: { folder: MediaFolder; context: Context
   );
 }
 
-function NameInput({
-  label,
-  initial,
-  onSubmit,
-  onCancel,
-}: {
-  label: string;
-  initial: string;
-  onSubmit: (name: string) => Promise<void>;
-  onCancel: () => void;
-}) {
-  const [name, setName] = useState(initial);
-  const [busy, setBusy] = useState(false);
-
+function FolderNameInput(props: { label: string; initial: string; onSubmit: (name: string) => Promise<void>; onCancel: () => void }) {
   return (
-    <form
-      className="py-0.5"
-      onSubmit={async (e) => {
-        e.preventDefault();
-        if (!name.trim()) return;
-        setBusy(true);
-        await onSubmit(name.trim());
-        setBusy(false);
-      }}
-    >
-      <input
-        aria-label={label}
-        className={`${inputClass} w-full`}
-        value={name}
-        // readOnly statt disabled: Ein gesperrtes Feld verliert den Fokus, danach greift Escape nicht mehr.
-        readOnly={busy}
-        autoFocus
-        onFocus={(e) => e.target.select()}
-        onChange={(e) => setName(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") onCancel();
-        }}
-        onBlur={() => {
-          if (!busy) onCancel();
-        }}
-        placeholder="Ordnername"
-      />
-    </form>
+    <div className="py-0.5">
+      <InlineEdit {...props} placeholder="Ordnername" required />
+    </div>
   );
 }
 
@@ -614,26 +578,11 @@ function ContextMenu({
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  useDismiss(ref, onClose, { closeOnScroll: true });
 
   useEffect(() => {
     ref.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
-    const close = (e: Event) => {
-      if (!ref.current?.contains(e.target as Node)) onClose();
-    };
-    const escape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", escape);
-    window.addEventListener("scroll", onClose, true);
-    window.addEventListener("resize", onClose);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", escape);
-      window.removeEventListener("scroll", onClose, true);
-      window.removeEventListener("resize", onClose);
-    };
-  }, [onClose]);
+  }, []);
 
   // Pfeiltasten wandern zwischen den aktiven Einträgen.
   function onKeyDown(e: React.KeyboardEvent) {

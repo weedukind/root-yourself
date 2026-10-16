@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { EditElement, elementLabel, ViewElement } from "@/elements/admin";
 import { completeElement, type ElementCandidate, ELEMENT_TYPES, type ElementType } from "@/elements/schema";
-import { inputClass, primaryButton, secondaryButton } from "../ui";
+import { Modal } from "../modal";
+import { inputClass, primaryButton, secondaryButton, smallButton as small } from "../ui";
+import { useDismiss } from "../use-dismiss";
 import {
   cellTargets,
   createElement,
@@ -22,8 +24,6 @@ import {
 // „Übernehmen“ ändert nur den Entwurf, gespeichert wird mit der Version.
 
 type Update = (change: (draft: Draft) => Draft) => void;
-
-const small = `${secondaryButton} px-2 py-0.5 text-xs`;
 
 // index: Stelle in der Zelle – beim Bearbeiten das Element, beim Hinzufügen der Einfügeplatz.
 type Dialog = { mode: "add" | "edit"; index: number; element: ElementCandidate };
@@ -135,22 +135,8 @@ export function CellElements({
 function AddElementMenu({ onAdd }: { onAdd: (type: ElementType) => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: Event) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const escape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", escape);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", escape);
-    };
-  }, [open]);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(ref, close, { active: open });
 
   return (
     <div ref={ref} className="relative">
@@ -197,54 +183,29 @@ function ElementDialog({
   onApply: (element: DraftElement) => void;
   onClose: () => void;
 }) {
-  const ref = useRef<HTMLDialogElement>(null);
   const [element, setElement] = useState(initial);
   const check = completeElement(element);
 
-  useEffect(() => {
-    ref.current?.showModal();
-  }, []);
-
   return (
-    <dialog
-      ref={ref}
-      aria-label={title}
-      onClose={onClose}
-      // Klick auf den abgedunkelten Hintergrund schließt (das Ereignis kommt dann vom dialog selbst).
-      onClick={(e) => {
-        if (e.target === ref.current) ref.current.close();
-      }}
-      className="m-auto w-full max-w-2xl rounded border border-zinc-200 bg-white p-0 text-zinc-900 shadow-xl backdrop:bg-black/40"
-    >
+    <Modal title={title} wide onClose={onClose}>
       <form
-        className="space-y-4 p-5"
+        className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
           if (check.ok) onApply(check.element);
         }}
       >
-        <div className="flex items-start justify-between gap-4">
-          <h2 className="text-lg font-semibold">{title}</h2>
-          <button
-            type="button"
-            aria-label="Schließen"
-            className="rounded px-2 text-xl leading-none text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
-            onClick={() => ref.current?.close()}
-          >
-            ×
-          </button>
-        </div>
         <EditElement element={element} onChange={setElement} />
         <div className="flex flex-wrap items-center gap-2">
           <button type="submit" className={primaryButton} disabled={!check.ok}>
             Übernehmen
           </button>
-          <button type="button" className={secondaryButton} onClick={() => ref.current?.close()}>
+          <button type="button" className={secondaryButton} onClick={onClose}>
             Abbrechen
           </button>
           {!check.ok && <span className="text-sm text-zinc-500">{check.problem}</span>}
         </div>
       </form>
-    </dialog>
+    </Modal>
   );
 }
