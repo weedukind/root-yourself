@@ -1,7 +1,7 @@
 import { HeadingShow } from "./heading/show";
 import { ImageShow } from "./image/show";
 import { TextShow } from "./text/show";
-import type { ElementContent } from "./types";
+import type { ElementContent } from "./schema";
 
 // Show-Modus aller Elementtypen: öffentliche Seite und Vorschau im Editor.
 

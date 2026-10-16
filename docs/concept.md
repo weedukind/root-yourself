@@ -68,9 +68,14 @@ Next.js-App. Es gibt genau eine Person, die Posts schreibt.
     mit der Version. Escape, „Abbrechen“ oder ein Klick daneben verwerfen.
     „Übernehmen“ ist gesperrt, solange das Element unvollständig ist (z. B.
     Überschrift ohne Text, Bild ohne gewähltes Bild).
-  Eingefrorene Versionen zeigen nur View, ohne Steuerelemente. Ein neuer Typ
-  braucht einen Ordner mit den drei Modi und je einen Eintrag in
-  `src/elements/show.tsx` und `src/elements/admin.tsx` (dazu Schema und Draft).
+  Eingefrorene Versionen zeigen nur View, ohne Steuerelemente.
+  Jeder Typ hat außerdem ein `schema.ts`: Daten (Zod; damit prüfen Server und
+  Popup), ob er auf ein Bild der Mediathek verweist (`media_id`), und die Daten
+  eines neuen Elements. `src/elements/schema.ts` sammelt sie; daraus leiten sich
+  die Typen für API, Server und Editor ab. Ein neuer Typ braucht also einen
+  Ordner (`schema.ts`, `show.tsx`, `view.tsx`, `edit.tsx`) und je einen Eintrag
+  in `src/elements/schema.ts`, `show.tsx` und `admin.tsx`. Verweist er auf eine
+  andere Tabelle als `media`, braucht `elements` eine neue FK-Spalte.
 - **Tag**: Name und Slug. Gemeinsam für Posts und Medien: an Posts als
   Metadaten pro Version, an Medien zum Ordnen der Mediathek (nicht versioniert).
 - **Medium**: Bild in R2, verwaltet über die Mediathek. Liegt in genau einem Ordner.

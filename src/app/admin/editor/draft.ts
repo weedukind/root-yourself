@@ -1,14 +1,12 @@
-import type { ElementInput, MediaRef, RowView, SaveVersionInput, VersionDetail } from "@/shared/api/versions";
+import { type DraftElement, type ElementCandidate, type ElementType, newElement } from "@/elements/schema";
+import type { ElementInput, RowView, SaveVersionInput, VersionDetail } from "@/shared/api/versions";
 import { placeCells } from "@/shared/grid-placement";
 
 // Arbeitsstand des Editors. Jedes Objekt hat einen `key` für React; `id` haben nur Elemente,
 // die bereits gespeichert sind (das Backend entscheidet anhand der id über Copy-on-Write).
 // Alle Funktionen sind rein und geben einen neuen Stand zurück.
 
-export type DraftElement =
-  | { key: string; id?: string; type: "heading"; data: { level: 2 | 3; text: string } }
-  | { key: string; id?: string; type: "text"; data: { markdown: string } }
-  | { key: string; id?: string; type: "image"; data: { caption?: string }; mediaId: string; media: MediaRef };
+export type { DraftElement };
 
 export type DraftCell = { key: string; width: number; height: number; elements: DraftElement[] };
 export type DraftRow = { key: string; gridWidth: number; gridHeight: number; cells: DraftCell[] };
@@ -38,14 +36,8 @@ export function fromVersion(version: VersionDetail): Draft {
 }
 
 function toElementInput(element: DraftElement): ElementInput {
-  switch (element.type) {
-    case "heading":
-      return { id: element.id, type: "heading", data: element.data };
-    case "text":
-      return { id: element.id, type: "text", data: element.data };
-    case "image":
-      return { id: element.id, type: "image", data: element.data, mediaId: element.mediaId };
-  }
+  const { id, type, data } = element;
+  return ("mediaId" in element ? { id, type, data, mediaId: element.mediaId } : { id, type, data }) as ElementInput;
 }
 
 export function toInput(draft: Draft, updatedAt: string): SaveVersionInput {
@@ -174,17 +166,8 @@ function updateElements(draft: Draft, row: number, cell: number, update: (elemen
   return updateCells(draft, row, (cells) => replaceAt(cells, cell, { ...cells[cell], elements: update(cells[cell].elements) }));
 }
 
-/** Leeres Element; ein Bild hat noch keins (mediaId ""), es wird im Formular gewählt. */
-export function createElement(type: DraftElement["type"]): DraftElement {
-  switch (type) {
-    case "heading":
-      return { key: newKey(), type: "heading", data: { level: 2, text: "" } };
-    case "text":
-      return { key: newKey(), type: "text", data: { markdown: "" } };
-    case "image":
-      return { key: newKey(), type: "image", data: {}, mediaId: "", media: { id: "", url: "", width: 0, height: 0, alt: "" } };
-  }
-}
+/** Neues, leeres Element für das Formular; übernommen wird es erst vollständig (completeElement). */
+export const createElement = (type: ElementType): ElementCandidate => newElement(type, newKey());
 
 export const addElement = (draft: Draft, row: number, cell: number, element: DraftElement): Draft =>
   updateElements(draft, row, cell, (elements) => [...elements, element]);

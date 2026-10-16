@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { EditElement, ELEMENT_TYPES, elementLabel, elementProblem, ViewElement } from "@/elements/admin";
-import type { ElementType } from "@/elements/types";
+import { EditElement, elementLabel, ViewElement } from "@/elements/admin";
+import { completeElement, type ElementCandidate, ELEMENT_TYPES, type ElementType } from "@/elements/schema";
 import { inputClass, primaryButton, secondaryButton } from "../ui";
 import {
   cellTargets,
@@ -26,7 +26,7 @@ type Update = (change: (draft: Draft) => Draft) => void;
 const small = `${secondaryButton} px-2 py-0.5 text-xs`;
 
 // index: Stelle in der Zelle – beim Bearbeiten das Element, beim Hinzufügen der Einfügeplatz.
-type Dialog = { mode: "add" | "edit"; index: number; element: DraftElement };
+type Dialog = { mode: "add" | "edit"; index: number; element: ElementCandidate };
 
 export function CellElements({
   draft,
@@ -193,13 +193,13 @@ function ElementDialog({
   onClose,
 }: {
   title: string;
-  initial: DraftElement;
+  initial: ElementCandidate;
   onApply: (element: DraftElement) => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [element, setElement] = useState(initial);
-  const problem = elementProblem(element);
+  const check = completeElement(element);
 
   useEffect(() => {
     ref.current?.showModal();
@@ -220,7 +220,7 @@ function ElementDialog({
         className="space-y-4 p-5"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!problem) onApply(element);
+          if (check.ok) onApply(check.element);
         }}
       >
         <div className="flex items-start justify-between gap-4">
@@ -236,13 +236,13 @@ function ElementDialog({
         </div>
         <EditElement element={element} onChange={setElement} />
         <div className="flex flex-wrap items-center gap-2">
-          <button type="submit" className={primaryButton} disabled={problem !== null}>
+          <button type="submit" className={primaryButton} disabled={!check.ok}>
             Übernehmen
           </button>
           <button type="button" className={secondaryButton} onClick={() => ref.current?.close()}>
             Abbrechen
           </button>
-          {problem && <span className="text-sm text-zinc-500">{problem}</span>}
+          {!check.ok && <span className="text-sm text-zinc-500">{check.problem}</span>}
         </div>
       </form>
     </dialog>

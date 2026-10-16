@@ -1,38 +1,19 @@
 import { z } from "zod";
+import { elementInput, type ElementInput, type ElementType, type ElementView, type MediaRef } from "@/elements/schema";
 import { fitsGrid } from "../grid-placement";
 import { postTitle, type VersionSummary } from "./posts";
 import type { TagRef } from "./tags";
 
 // Vertrag für den Inhalt einer Version: GET/PUT /api/admin/posts/:id/versions/:vid.
 // Layout: Rows → Zellen → Elemente (docs/concept.md, „Seitenlayout“).
-// Ein neuer Elementtyp wird hier ergänzt; verweist er auf eine andere Tabelle, braucht er
-// zusätzlich eine FK-Spalte in elements (Muster: media_id).
+// Elementtypen und ihre Schemas: src/elements/schema.ts.
 
 export const MAX_GRID = 12;
 
 const gridSize = z.number().int().min(1).max(MAX_GRID);
-/** Ohne id: neues Element. Mit id: ein Element, das die Version bereits verwendet. */
-const elementId = z.uuid().optional();
 
-export const headingData = z.object({
-  level: z.union([z.literal(2), z.literal(3)]),
-  text: z.string().trim().min(1, "Überschrift darf nicht leer sein").max(300),
-});
-
-export const textData = z.object({
-  markdown: z.string().max(50_000),
-});
-
-export const imageData = z.object({
-  caption: z.string().trim().max(500).optional(),
-});
-
-export const elementInput = z.discriminatedUnion("type", [
-  z.object({ id: elementId, type: z.literal("heading"), data: headingData }),
-  z.object({ id: elementId, type: z.literal("text"), data: textData }),
-  z.object({ id: elementId, type: z.literal("image"), data: imageData, mediaId: z.uuid() }),
-]);
-
+export { elementInput };
+export type { ElementInput, ElementType, ElementView, MediaRef };
 export const cellInput = z.object({
   width: gridSize,
   height: gridSize,
@@ -84,16 +65,7 @@ export const saveVersionInput = z
     }
   });
 
-export type ElementInput = z.infer<typeof elementInput>;
-export type ElementType = ElementInput["type"];
 export type SaveVersionInput = z.infer<typeof saveVersionInput>;
-
-export type MediaRef = { id: string; url: string; width: number; height: number; alt: string };
-
-export type ElementView =
-  | { id: string; type: "heading"; data: z.infer<typeof headingData> }
-  | { id: string; type: "text"; data: z.infer<typeof textData> }
-  | { id: string; type: "image"; data: z.infer<typeof imageData>; mediaId: string; media: MediaRef };
 
 export type CellView = { id: string; width: number; height: number; elements: ElementView[] };
 export type RowView = { id: string; gridWidth: number; gridHeight: number; cells: CellView[] };

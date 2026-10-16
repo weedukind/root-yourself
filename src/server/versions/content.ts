@@ -1,6 +1,7 @@
 import { and, asc, countDistinct, eq, inArray, max, sql } from "drizzle-orm";
 import { cellElements, cells, elements, media, rows, tags, versions, versionTags } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { ELEMENT_SCHEMAS, isElementType } from "@/elements/schema";
 import { byName } from "@/lib/sort";
 import type {
   CellView,
@@ -23,28 +24,21 @@ type ElementRow = typeof elements.$inferSelect;
 type MediaRow = typeof media.$inferSelect;
 
 function toElementView(row: ElementRow, medium: MediaRow | null, storage: MediaStorage): ElementView {
-  switch (row.type) {
-    case "heading":
-      return { id: row.id, type: "heading", data: row.data as Extract<ElementView, { type: "heading" }>["data"] };
-    case "text":
-      return { id: row.id, type: "text", data: row.data as Extract<ElementView, { type: "text" }>["data"] };
-    case "image":
-      return {
-        id: row.id,
-        type: "image",
-        data: row.data as Extract<ElementView, { type: "image" }>["data"],
-        mediaId: row.mediaId!,
-        media: {
-          id: medium!.id,
-          url: storage.publicUrl(medium!.storageKey),
-          width: medium!.width,
-          height: medium!.height,
-          alt: medium!.alt,
-        },
-      };
-    default:
-      throw new Error(`Unbekannter Elementtyp ${row.type}`);
-  }
+  if (!isElementType(row.type)) throw new Error(`Unbekannter Elementtyp ${row.type}`);
+  const element = { id: row.id, type: row.type, data: row.data };
+  // Ob ein Typ ein Bild hat, sichert die Datenbank (elements_media_check, siehe ELEMENT_SCHEMAS).
+  if (!ELEMENT_SCHEMAS[row.type].media) return element as ElementView;
+  return {
+    ...element,
+    mediaId: row.mediaId!,
+    media: {
+      id: medium!.id,
+      url: storage.publicUrl(medium!.storageKey),
+      width: medium!.width,
+      height: medium!.height,
+      alt: medium!.alt,
+    },
+  } as ElementView;
 }
 
 export async function getVersion(
@@ -114,7 +108,7 @@ function stableJson(value: unknown): string {
 const elementValues = (element: ElementInput) => ({
   type: element.type,
   data: element.data,
-  mediaId: element.type === "image" ? element.mediaId : null,
+  mediaId: "mediaId" in element ? element.mediaId : null,
 });
 
 function unchanged(row: ElementRow, values: ReturnType<typeof elementValues>): boolean {
