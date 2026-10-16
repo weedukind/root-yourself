@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ApiError } from "@/shared/api/errors";
 import {
   IMAGE_TYPES,
@@ -13,14 +13,32 @@ import {
 } from "@/shared/api/media";
 import type { TagRef, TagWithUsage } from "@/shared/api/tags";
 import { api, type ApiResult } from "@/app/admin/api-client";
-import { folderOptions, pathLabel, pathOf } from "@/app/admin/media-folders";
-import { dangerButton, ErrorText, inputClass, primaryButton, secondaryButton } from "@/app/admin/ui";
-import { FolderTree } from "./folder-tree";
+import { pathLabel, pathOf } from "@/app/admin/media-folders";
+import { ErrorText, inputClass, primaryButton, secondaryButton } from "@/app/admin/ui";
+import { type Clipboard, FolderTree } from "./folder-tree";
 
 const ACCEPT = Object.keys(IMAGE_TYPES).join(",");
 
 const formatSize = (bytes: number) =>
   bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
+const iconButtonBase = "rounded border p-1.5 disabled:opacity-40";
+const iconButton = `${iconButtonBase} border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100 disabled:hover:bg-white`;
+
+const countLabel = (n: number) => (n === 1 ? "1 Bild" : `${n} Bilder`);
+
+function Icon({ d }: { d: string }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className="h-5 w-5 fill-none stroke-current stroke-2" strokeLinecap="round" strokeLinejoin="round">
+      <path d={d} />
+    </svg>
+  );
+}
+
+const UPLOAD_ICON = "M12 15V3m-5 5 5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4";
+const CUT_ICON =
+  "M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12";
+const DELETE_ICON = "M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m5 5v6m4-6v6";
 
 const clientError = (message: string): ApiError => ({ kind: "invalid", code: "client", message });
 
@@ -79,6 +97,11 @@ export function MediaLibrary({ initialFolderId }: { initialFolderId: string | nu
   const [allTags, setAllTags] = useState<TagWithUsage[]>([]);
   const [filterTag, setFilterTag] = useState("");
   const [loadError, setLoadError] = useState<ApiError | null>(null);
+  // Angehakte Bilder; Löschen und Ausschneiden wirken auf sie.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [clipboard, setClipboard] = useState<Clipboard | null>(null);
+  const [actionError, setActionError] = useState<ApiError | null>(null);
+  const [busy, setBusy] = useState(false);
 
   // Ohne Ordner zeigt die oberste Ebene nur Ordner – außer bei einem Tag-Filter: dann alle Treffer.
   const showImages = folderId !== null || filterTag !== "";
@@ -96,7 +119,10 @@ export function MediaLibrary({ initialFolderId }: { initialFolderId: string | nu
     if (!foldersResult.ok) return setLoadError(foldersResult.error);
     setFolders(foldersResult.value);
     if (mediaResult && !mediaResult.ok) return setLoadError(mediaResult.error);
-    setItems(mediaResult ? mediaResult.value : []);
+    const list = mediaResult ? mediaResult.value : [];
+    setItems(list);
+    // Was nicht mehr in der Liste steht (gelöscht, verschoben), ist auch nicht mehr ausgewählt.
+    setSelected((current) => new Set(list.filter((m) => current.has(m.id)).map((m) => m.id)));
     setLoadError(null);
   }, [folderId, filterTag, showImages]);
 
@@ -108,6 +134,8 @@ export function MediaLibrary({ initialFolderId }: { initialFolderId: string | nu
   function open(id: string | null) {
     setFolderId(id);
     setItems(null);
+    setSelected(new Set());
+    setActionError(null);
     // Den Ordner in der Adresse merken, damit Neuladen und Zurück-Links dort landen.
     window.history.replaceState(null, "", id ? `?folder=${id}` : window.location.pathname);
   }
@@ -119,24 +147,125 @@ export function MediaLibrary({ initialFolderId }: { initialFolderId: string | nu
     if (folders && folderId && !current) open(null);
   }, [folders, folderId, current]);
 
+  const selectedItems = items?.filter((m) => selected.has(m.id)) ?? [];
+  const selectedInUse = selectedItems.some((m) => m.versionCount > 0);
+  const cutIds = new Set(clipboard?.kind === "media" ? clipboard.items.map((m) => m.id) : []);
+
+  function toggleSelected(id: string) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function cutSelected() {
+    setClipboard({
+      kind: "media",
+      items: selectedItems.map(({ id, folderId, updatedAt }) => ({ id, folderId, updatedAt })),
+    });
+    setSelected(new Set());
+    setActionError(null);
+  }
+
+  async function deleteSelected() {
+    if (!window.confirm(`${countLabel(selectedItems.length)} endgültig löschen?`)) return;
+    setBusy(true);
+    const results = await Promise.all(selectedItems.map((m) => api<null>(`/media/${m.id}`, { method: "DELETE" })));
+    setBusy(false);
+    setActionError(results.find((r) => !r.ok)?.error ?? null);
+    await load();
+  }
+
+  async function pasteMedia(targetId: string): Promise<ApiError | null> {
+    if (clipboard?.kind !== "media") return null;
+    const moving = clipboard.items.filter((m) => m.folderId !== targetId);
+    const results = await Promise.all(
+      moving.map((m) =>
+        api<Media>(`/media/${m.id}`, { method: "PATCH", body: { folderId: targetId, updatedAt: m.updatedAt } }),
+      ),
+    );
+    await load();
+    return results.find((r) => !r.ok)?.error ?? null;
+  }
+
   if (!folders) return loadError ? <ErrorText error={loadError} /> : <p className="text-sm text-zinc-500">Lädt …</p>;
 
   return (
     <div className="grid gap-6 md:grid-cols-[14rem_1fr]">
       <nav aria-label="Ordner" className="space-y-2 md:border-r md:border-zinc-200 md:pr-4">
-        <FolderTree folders={folders} currentId={folderId} onOpen={open} onChanged={load} />
+        <FolderTree
+          folders={folders}
+          currentId={folderId}
+          onOpen={open}
+          onChanged={load}
+          clipboard={clipboard}
+          onClipboard={setClipboard}
+          onPasteMedia={pasteMedia}
+        />
       </nav>
 
       <div className="min-w-0 space-y-6">
         <Breadcrumb folders={folders} currentId={folderId} onOpen={open} />
 
-
-        {current ? (
-          <Uploader key={current.id} folderId={current.id} onUploaded={load} />
-        ) : (
+        {!current && (
           <p className="text-sm text-zinc-500">
             Bilder liegen immer in einem Ordner. Zum Hochladen links einen Ordner öffnen oder mit „+“ einen anlegen.
           </p>
+        )}
+        {(current || showImages) && (
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              {current && <Uploader key={current.id} folder={current} onUploaded={load} />}
+              {showImages && (
+                <>
+                  <button
+                    type="button"
+                    className={iconButton}
+                    aria-label="Ausgewählte Bilder ausschneiden"
+                    title="Ausschneiden – danach im Ordnerbaum per Rechtsklick „Einfügen“"
+                    disabled={selectedItems.length === 0 || busy}
+                    onClick={cutSelected}
+                  >
+                    <Icon d={CUT_ICON} />
+                  </button>
+                  <button
+                    type="button"
+                    className={`${iconButton} hover:text-red-600 disabled:hover:text-zinc-700`}
+                    aria-label="Ausgewählte Bilder löschen"
+                    title={selectedInUse ? "Verwendete Bilder können nicht gelöscht werden" : "Löschen"}
+                    disabled={selectedItems.length === 0 || selectedInUse || busy}
+                    onClick={deleteSelected}
+                  >
+                    <Icon d={DELETE_ICON} />
+                  </button>
+                  {items && items.length > 0 && (
+                    <label className="ml-2 flex items-center gap-1.5 text-sm text-zinc-600">
+                      <input
+                        type="checkbox"
+                        checked={selectedItems.length === items.length}
+                        ref={(el) => {
+                          if (el) el.indeterminate = selectedItems.length > 0 && selectedItems.length < items.length;
+                        }}
+                        onChange={(e) => setSelected(new Set(e.target.checked ? items.map((m) => m.id) : []))}
+                      />
+                      {selectedItems.length > 0 ? `${countLabel(selectedItems.length)} ausgewählt` : "Alle auswählen"}
+                    </label>
+                  )}
+                </>
+              )}
+            </div>
+            {clipboard?.kind === "media" && (
+              <p className="text-sm text-zinc-600">
+                {countLabel(clipboard.items.length)} ausgeschnitten – im Ordnerbaum per Rechtsklick „Einfügen“.{" "}
+                <button type="button" className="underline hover:text-zinc-900" onClick={() => setClipboard(null)}>
+                  Aufheben
+                </button>
+              </p>
+            )}
+            <ErrorText error={actionError} />
+          </div>
         )}
 
         <div className="flex items-center gap-2">
@@ -171,6 +300,9 @@ export function MediaLibrary({ initialFolderId }: { initialFolderId: string | nu
                   folders={folders}
                   showFolder={!current}
                   allTags={allTags}
+                  selected={selected.has(item.id)}
+                  cut={cutIds.has(item.id)}
+                  onToggle={() => toggleSelected(item.id)}
                   onChanged={load}
                 />
               ))}
@@ -214,54 +346,107 @@ function Breadcrumb({
 
 type UploadStatus = { name: string; state: "läuft" | "fertig" | "fehler"; error?: ApiError };
 
-function Uploader({ folderId, onUploaded }: { folderId: string; onUploaded: () => Promise<void> }) {
+/** „Bilder hochladen“ öffnet ein Popup mit dem Formular. Schließt sich selbst, wenn alles geklappt hat. */
+function Uploader({ folder, onUploaded }: { folder: MediaFolder; onUploaded: () => Promise<void> }) {
+  const dialog = useRef<HTMLDialogElement>(null);
   const [statuses, setStatuses] = useState<UploadStatus[]>([]);
   const busy = statuses.some((s) => s.state === "läuft");
 
+  function open() {
+    setStatuses([]);
+    dialog.current?.showModal();
+  }
+
   async function upload(files: File[]) {
     setStatuses(files.map((f) => ({ name: f.name, state: "läuft" })));
-    await Promise.all(
+    const results = await Promise.all(
       files.map(async (file, index) => {
-        const result = await uploadFile(file, folderId);
+        const result = await uploadFile(file, folder.id);
         setStatuses((current) =>
           current.map((s, i) =>
             i === index ? { ...s, state: result.ok ? "fertig" : "fehler", error: result.ok ? undefined : result.error } : s,
           ),
         );
+        return result.ok;
       }),
     );
     await onUploaded();
+    if (results.every(Boolean)) dialog.current?.close();
   }
 
   return (
-    <div className="space-y-2">
-      <label className="block text-sm font-medium" htmlFor="upload">
-        Bilder in diesen Ordner hochladen
-      </label>
-      <input
-        id="upload"
-        type="file"
-        accept={ACCEPT}
-        multiple
-        disabled={busy}
-        className="block text-sm file:mr-3 file:rounded file:border-0 file:bg-zinc-900 file:px-3 file:py-1 file:text-white"
-        onChange={(e) => {
-          const files = Array.from(e.target.files ?? []);
-          e.target.value = "";
-          if (files.length) void upload(files);
+    <>
+      <button
+        type="button"
+        className={`${iconButtonBase} border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-700`}
+        aria-label="Bilder hochladen"
+        title="Bilder hochladen"
+        onClick={open}
+      >
+        <Icon d={UPLOAD_ICON} />
+      </button>
+      <dialog
+        ref={dialog}
+        aria-labelledby="upload-title"
+        // Während des Uploads nicht schließen (Escape).
+        onCancel={(e) => {
+          if (busy) e.preventDefault();
         }}
-      />
-      <p className="text-xs text-zinc-500">JPEG, PNG, WebP, AVIF oder GIF, höchstens 20 MB pro Bild.</p>
-      {statuses.length > 0 && (
-        <ul className="space-y-1 text-sm" aria-live="polite">
-          {statuses.map((s, i) => (
-            <li key={i} className={s.state === "fehler" ? "text-red-600" : "text-zinc-600"}>
-              {s.name}: {s.state === "fehler" ? (s.error?.message ?? "Fehler") : s.state}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+        // Klick auf den abgedunkelten Hintergrund schließt (das Ereignis kommt dann vom dialog selbst).
+        onClick={(e) => {
+          if (e.target === dialog.current && !busy) dialog.current.close();
+        }}
+        className="m-auto w-full max-w-md rounded border border-zinc-200 bg-white p-0 text-zinc-900 shadow-xl backdrop:bg-black/40"
+      >
+        <div className="space-y-4 p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 id="upload-title" className="text-lg font-semibold">
+                Bilder hochladen
+              </h2>
+              <p className="text-sm text-zinc-600">In den Ordner „{folder.name}“</p>
+            </div>
+            <button
+              type="button"
+              aria-label="Schließen"
+              className="rounded px-2 text-xl leading-none text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-30"
+              disabled={busy}
+              onClick={() => dialog.current?.close()}
+            >
+              ×
+            </button>
+          </div>
+          <div className="space-y-2">
+            <label className="sr-only" htmlFor="upload">
+              Bilder auswählen
+            </label>
+            <input
+              id="upload"
+              type="file"
+              accept={ACCEPT}
+              multiple
+              disabled={busy}
+              className="block w-full text-sm file:mr-3 file:rounded file:border-0 file:bg-zinc-900 file:px-3 file:py-1 file:text-white"
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? []);
+                e.target.value = "";
+                if (files.length) void upload(files);
+              }}
+            />
+            <p className="text-xs text-zinc-500">JPEG, PNG, WebP, AVIF oder GIF, höchstens 20 MB pro Bild. Mehrere auf einmal möglich.</p>
+          </div>
+          {statuses.length > 0 && (
+            <ul className="space-y-1 text-sm" aria-live="polite">
+              {statuses.map((s, i) => (
+                <li key={i} className={s.state === "fehler" ? "text-red-600" : "text-zinc-600"}>
+                  {s.name}: {s.state === "fehler" ? (s.error?.message ?? "Fehler") : s.state}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </dialog>
+    </>
   );
 }
 
@@ -270,6 +455,9 @@ function MediaCard({
   folders,
   showFolder,
   allTags,
+  selected,
+  cut,
+  onToggle,
   onChanged,
 }: {
   item: MediaWithUsage;
@@ -277,44 +465,27 @@ function MediaCard({
   /** Ordnerpfad anzeigen, wenn die Liste Bilder aus mehreren Ordnern zeigt. */
   showFolder: boolean;
   allTags: TagRef[];
+  selected: boolean;
+  /** Ausgeschnitten, wartet auf „Einfügen“ im Ordnerbaum. */
+  cut: boolean;
+  onToggle: () => void;
   onChanged: () => Promise<void>;
 }) {
-  const [alt, setAlt] = useState(item.alt);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
-  const [busy, setBusy] = useState(false);
   const inUse = item.versionCount > 0;
 
-  async function saveAlt(event: React.FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    const result = await api<Media>(`/media/${item.id}`, { method: "PATCH", body: { alt, updatedAt: item.updatedAt } });
-    setBusy(false);
-    if (!result.ok) return setError(result.error);
-    setError(null);
-    await onChanged();
-  }
-
-  async function move(folderId: string) {
-    setBusy(true);
-    const result = await api<Media>(`/media/${item.id}`, { method: "PATCH", body: { folderId, updatedAt: item.updatedAt } });
-    setBusy(false);
-    if (!result.ok) return setError(result.error);
-    setError(null);
-    await onChanged();
-  }
-
-  async function remove() {
-    setBusy(true);
-    const result = await api<null>(`/media/${item.id}`, { method: "DELETE" });
-    setBusy(false);
-    if (!result.ok) return setError(result.error);
-    await onChanged();
-  }
-
   return (
-    <li className="flex flex-col overflow-hidden rounded border border-zinc-200 bg-white">
-      <div className="flex aspect-[4/3] items-center justify-center bg-zinc-100">
+    <li
+      className={`flex flex-col overflow-hidden rounded border bg-white ${selected ? "border-zinc-900 ring-2 ring-zinc-900" : "border-zinc-200"} ${cut ? "opacity-50" : ""}`}
+    >
+      <div className="relative flex aspect-[4/3] items-center justify-center bg-zinc-100">
+        <input
+          type="checkbox"
+          aria-label={`${item.filename} auswählen`}
+          checked={selected}
+          onChange={onToggle}
+          className="absolute top-2 left-2 h-5 w-5 cursor-pointer"
+        />
         {/* eslint-disable-next-line @next/next/no-img-element -- Admin-Vorschau direkt aus dem Speicher */}
         <img src={item.url} alt={item.alt} loading="lazy" className="max-h-full max-w-full object-contain" />
       </div>
@@ -329,58 +500,8 @@ function MediaCard({
           </p>
           {showFolder && <p className="truncate text-xs text-zinc-500">📁 {pathLabel(folders, item.folderId)}</p>}
         </div>
-        <label className="flex items-center gap-2 text-xs text-zinc-600">
-          Ordner
-          <select
-            className={`${inputClass} min-w-0 flex-1 text-xs`}
-            value={item.folderId}
-            disabled={busy}
-            onChange={(e) => void move(e.target.value)}
-          >
-            {folderOptions(folders).map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
         <MediaTags item={item} allTags={allTags} onChanged={onChanged} onError={setError} />
-        <form onSubmit={saveAlt} className="flex gap-2">
-          <label className="sr-only" htmlFor={`alt-${item.id}`}>
-            Alt-Text
-          </label>
-          <input
-            id={`alt-${item.id}`}
-            className={`${inputClass} min-w-0 flex-1`}
-            placeholder="Alt-Text (Bildbeschreibung)"
-            value={alt}
-            onChange={(e) => setAlt(e.target.value)}
-          />
-          <button type="submit" className={secondaryButton} disabled={busy || alt === item.alt}>
-            Speichern
-          </button>
-        </form>
-        {confirmDelete ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm">Bild löschen?</span>
-            <button type="button" className={dangerButton} onClick={remove} disabled={busy}>
-              Endgültig löschen
-            </button>
-            <button type="button" className={secondaryButton} onClick={() => setConfirmDelete(false)}>
-              Abbrechen
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            className={`${secondaryButton} self-start`}
-            onClick={() => setConfirmDelete(true)}
-            disabled={inUse}
-            title={inUse ? "Verwendete Bilder können nicht gelöscht werden" : undefined}
-          >
-            Löschen
-          </button>
-        )}
+        <AltText item={item} onChanged={onChanged} onError={setError} />
         <ErrorText error={error} />
         {error?.code === "stale" && (
           <button type="button" className={`${primaryButton} self-start`} onClick={onChanged}>
@@ -389,6 +510,87 @@ function MediaCard({
         )}
       </div>
     </li>
+  );
+}
+
+/** Alt-Text zum Lesen; Doppelklick (oder Enter/F2 mit Fokus) macht ein Feld daraus. Enter speichert, Escape oder Wegklicken verwirft. */
+function AltText({
+  item,
+  onChanged,
+  onError,
+}: {
+  item: MediaWithUsage;
+  onChanged: () => Promise<void>;
+  onError: (error: ApiError | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [alt, setAlt] = useState(item.alt);
+  const [busy, setBusy] = useState(false);
+
+  function startEdit() {
+    setAlt(item.alt);
+    setEditing(true);
+  }
+
+  function cancel() {
+    setEditing(false);
+    onError(null);
+  }
+
+  async function save() {
+    if (alt === item.alt) return setEditing(false);
+    setBusy(true);
+    const result = await api<Media>(`/media/${item.id}`, { method: "PATCH", body: { alt, updatedAt: item.updatedAt } });
+    setBusy(false);
+    if (!result.ok) return onError(result.error);
+    onError(null);
+    setEditing(false);
+    await onChanged();
+  }
+
+  if (editing) {
+    return (
+      <input
+        aria-label={`Alt-Text von ${item.filename}`}
+        className={`${inputClass} w-full`}
+        placeholder="Alt-Text (Bildbeschreibung)"
+        value={alt}
+        // readOnly statt disabled: Ein gesperrtes Feld verliert den Fokus, danach greift Escape nicht mehr.
+        readOnly={busy}
+        autoFocus
+        onFocus={(e) => e.target.select()}
+        onChange={(e) => setAlt(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            void save();
+          }
+          if (e.key === "Escape") cancel();
+        }}
+        onBlur={() => {
+          if (!busy) cancel();
+        }}
+      />
+    );
+  }
+
+  return (
+    <p
+      role="button"
+      tabIndex={0}
+      title="Doppelklick zum Bearbeiten"
+      aria-label={`Alt-Text von ${item.filename}: ${item.alt || "leer"}. Enter zum Bearbeiten`}
+      onDoubleClick={startEdit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === "F2") {
+          e.preventDefault();
+          startEdit();
+        }
+      }}
+      className="cursor-text rounded px-1 py-0.5 text-sm select-none hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
+    >
+      {item.alt || <span className="text-zinc-400 italic">Kein Alt-Text</span>}
+    </p>
   );
 }
 

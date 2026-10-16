@@ -29,7 +29,8 @@ Next.js-App. Es gibt genau eine Person, die Posts schreibt.
 - Die Produktions-Datenbank steht bewusst nicht in `.env.local`. Migrationen für Neon:
   `npm run db:migrate:prod` holt die Zugangsdaten mit `vercel env pull` in ein temporäres
   Verzeichnis (danach gelöscht), zeigt die fehlenden Migrationen und spielt sie nach
-  Rückfrage über die direkte Verbindung ein. `-- --check` zeigt nur den Stand.
+  Rückfrage über die direkte Verbindung ein. `-- --check` zeigt nur den Stand,
+  `-- --yes` spielt ohne Rückfrage ein (nötig ohne Terminal, z. B. mit `!` in Claude Code).
   Preview und Produktion nutzen dieselbe Neon-Datenbank: Migrationen vor dem Merge nach
   `production` einspielen und nur solche, die der laufende Code verträgt (neue Tabellen
   und Spalten ja, Umbenennen oder Löschen nicht).
@@ -709,11 +710,20 @@ einem Vorschau-Balken (Version, veröffentlicht oder nicht, Gültigkeit).
   merkt sich das (localStorage), der Weg zum geöffneten Ordner ist immer offen,
   beim Ziehen klappt ein zugeklappter Ordner nach kurzem Verweilen auf.
   Neue Ordner auf der obersten Ebene über „+“ neben „Alle Ordner“. Rechts nur
-  Pfad, Upload, Filter und Bilder. Upload in den geöffneten Ordner
-  (Presigned URL → R2, Breite/Höhe im Browser ermittelt), Bild in anderen
-  Ordner verschieben, Alt-Text bearbeiten, Tags zuordnen, nach Tag filtern
-  (im Ordner; auf der obersten Ebene über alle Ordner), löschen (nur nicht
-  verwendete Bilder). Die Bildauswahl im Editor filtert nach Ordner.
+  Pfad, eine Icon-Leiste, Filter und Bilder. Die Leiste: Hochladen (öffnet ein
+  Popup mit dem Formular, `<dialog>`; schließt sich nach erfolgreichem Upload,
+  bei Fehlern bleibt es offen), Ausschneiden, Löschen und „Alle auswählen“.
+  Upload in den geöffneten Ordner (Presigned URL → R2, Breite/Höhe im Browser
+  ermittelt). Jede Bild-Kachel hat eine Checkbox; Ausschneiden und Löschen
+  wirken auf die angehakten Bilder. Löschen fragt nach und ist gesperrt, sobald
+  ein verwendetes Bild dabei ist. Ausgeschnittene Bilder fügt „Einfügen“ im
+  Kontextmenü (oder Strg/⌘+V) eines Ordners im Baum dort ein – so werden Bilder
+  verschoben; Ordner und Bilder teilen sich die Zwischenablage, das letzte
+  Ausschneiden gilt. Der Alt-Text steht als Text auf der Kachel; Doppelklick
+  (oder Enter/F2 mit Fokus) macht ein Feld daraus, Enter speichert, Esc oder
+  Wegklicken verwirft. Außerdem Tags zuordnen und nach Tag filtern (im Ordner;
+  auf der obersten Ebene über alle Ordner). Die Bildauswahl im Editor filtert
+  nach Ordner.
 - Versions-Editor unter `/admin/posts/[id]/versions/[vid]`:
   - Titel, Tags, Rows („+ Row“ legt 1 Spalte mit einer Zelle an; Grid-Größe
     änderbar; freie Felder des Grids werden angezeigt), Zellen (Größe, Reihenfolge), Elemente (hinzufügen,
