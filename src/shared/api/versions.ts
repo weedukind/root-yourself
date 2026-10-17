@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { elementInput, type ElementInput, type ElementType, type ElementView, type MediaRef } from "@/elements/schema";
+import { elementInput, type ElementInput, type ElementType, type ElementView, flattenElements, type MediaRef } from "@/elements/schema";
 import { fitsGrid } from "../grid-placement";
 import { postTitle, type VersionSummary } from "./posts";
 import type { TagRef } from "./tags";
@@ -9,6 +9,7 @@ import type { TagRef } from "./tags";
 // Elementtypen und ihre Schemas: src/elements/schema.ts.
 
 export const MAX_GRID = 12;
+export const MAX_CELL_ELEMENTS = 100;
 
 const gridSize = z.number().int().min(1).max(MAX_GRID);
 
@@ -17,7 +18,10 @@ export type { ElementInput, ElementType, ElementView, MediaRef };
 export const cellInput = z.object({
   width: gridSize,
   height: gridSize,
-  elements: z.array(elementInput).max(100),
+  // Höchstens 100 Elemente pro Zelle, die in Containern mitgezählt – das begrenzt auch die Tiefe.
+  elements: z
+    .array(elementInput)
+    .refine((list) => flattenElements(list).length <= MAX_CELL_ELEMENTS, `Höchstens ${MAX_CELL_ELEMENTS} Elemente pro Zelle`),
 });
 
 export const rowInput = z
@@ -56,7 +60,7 @@ export const saveVersionInput = z
     const seen = new Set<string>();
     for (const row of input.rows) {
       for (const cell of row.cells) {
-        for (const element of cell.elements) {
+        for (const element of flattenElements(cell.elements)) {
           if (!element.id) continue;
           if (seen.has(element.id)) ctx.addIssue({ code: "custom", path: ["rows"], message: "Element doppelt verwendet" });
           seen.add(element.id);

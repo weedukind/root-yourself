@@ -6,6 +6,8 @@ import type { PostDetail } from "@/shared/api/posts";
 import {
   saveVersionInput,
   type ElementInput,
+  type ElementView,
+  MAX_CELL_ELEMENTS,
   type SaveVersionInput,
   type VersionDetail,
 } from "@/shared/api/versions";
@@ -40,6 +42,12 @@ async function load(db: Db, postId: string, versionId: string): Promise<VersionD
   return result.value;
 }
 
+function inputOf(e: ElementView): ElementInput {
+  if (e.type === "image") return { id: e.id, type: e.type, data: e.data, mediaId: e.mediaId };
+  if (e.type === "slide") return { id: e.id, type: e.type, data: e.data, children: e.children.map(inputOf) };
+  return { id: e.id, type: e.type, data: e.data } as ElementInput;
+}
+
 /** Eingabe aus einer geladenen Version – so, wie der Editor sie zurückschicken würde. */
 function toInput(version: VersionDetail, patch: Partial<SaveVersionInput> = {}): SaveVersionInput {
   return {
@@ -51,9 +59,7 @@ function toInput(version: VersionDetail, patch: Partial<SaveVersionInput> = {}):
       cells: row.cells.map((cell) => ({
         width: cell.width,
         height: cell.height,
-        elements: cell.elements.map((e): ElementInput =>
-          e.type === "image" ? { id: e.id, type: e.type, data: e.data, mediaId: e.mediaId } : { id: e.id, type: e.type, data: e.data } as ElementInput,
-        ),
+        elements: cell.elements.map(inputOf),
       })),
     })),
     updatedAt: version.updatedAt,
@@ -209,6 +215,87 @@ describe("saveVersion – geteilte Elemente (Copy-on-Write)", () => {
       expect(await elementCount(db, post.id)).toBe(3);
       expect(texts(await load(db, post.id, v1.id))).toEqual([[["Eins", "Zwei"], ["Drei"]]]);
     }));
+});
+
+describe("saveVersion – Container (Slide)", () => {
+  const slide = (children: ElementInput[], id?: string): ElementInput => ({ id, type: "slide", data: {}, children });
+  /** Baum der ersten Zelle: Texte als Markdown, Slides als Liste ihrer Kinder. */
+  const tree = (list: ElementView[]): unknown[] =>
+    list.map((e) => (e.type === "text" ? e.data.markdown : e.type === "slide" ? tree(e.children) : e.type));
+  const firstCell = (version: VersionDetail) => version.rows[0].cells[0].elements;
+
+  it("speichert und lädt verschachtelte Slides in ihrer Reihenfolge", () =>
+    withRollback(async (db) => {
+      const post = await newPost(db);
+      const v1 = await load(db, post.id, post.versions[0].id);
+      const rows = twoColumns([slide([text("A"), slide([text("B"), text("C")])]), text("D")], []);
+      const { version } = await save(db, post.id, v1.id, toInput(v1, { rows }));
+      expect(tree(firstCell(version))).toEqual([["A", ["B", "C"]], "D"]);
+      expect(await load(db, post.id, v1.id)).toEqual(version);
+      expect(await elementCount(db, post.id)).toBe(6);
+    }));
+
+  it("Forken teilt die Kinder; ein geändertes Kind wird geklont, der Rest bleibt geteilt", () =>
+    withRollback(async (db) => {
+      const post = await newPost(db);
+      const v1 = await load(db, post.id, post.versions[0].id);
+      const saved = await save(db, post.id, v1.id, toInput(v1, { rows: twoColumns([slide([text("A"), text("B")])], []) }));
+      const forked = await forkVersion(db, post.id, v1.id);
+      if (!forked.ok) throw new Error(forked.error.message);
+      const v2 = await load(db, post.id, forked.value.id);
+      expect(tree(firstCell(v2))).toEqual([["A", "B"]]);
+
+      const [shared] = firstCell(v2);
+      if (shared.type !== "slide") throw new Error("Slide erwartet");
+      const [a, b] = shared.children;
+      const changed = toInput(v2, { rows: twoColumns([slide([text("A in v2", a.id), inputOf(b)], shared.id)], []) });
+      const { version } = await save(db, post.id, v2.id, changed);
+      const [slideV2] = firstCell(version);
+      if (slideV2.type !== "slide") throw new Error("Slide erwartet");
+      expect(slideV2.id).toBe(shared.id); // die Slide selbst ist unverändert und bleibt geteilt
+      expect(slideV2.children[0].id).not.toBe(a.id);
+      expect(slideV2.children[1].id).toBe(b.id);
+      expect(tree(firstCell(await load(db, post.id, v1.id)))).toEqual([["A", "B"]]);
+      expect(tree(firstCell(saved.version))).toEqual([["A", "B"]]);
+    }));
+
+  it("mit der Slide fallen ihre Kinder weg; ein Kind lässt sich vorher in die Zelle holen", () =>
+    withRollback(async (db) => {
+      const post = await newPost(db);
+      const v1 = await load(db, post.id, post.versions[0].id);
+      const { version } = await save(db, post.id, v1.id, toInput(v1, { rows: twoColumns([slide([text("A"), text("B")])], []) }));
+      const [s] = firstCell(version);
+      if (s.type !== "slide") throw new Error("Slide erwartet");
+      const kept = s.children[1];
+
+      const { version: after } = await save(db, post.id, v1.id, toInput(version, { rows: twoColumns([inputOf(kept)], []) }));
+      expect(firstCell(after).map((e) => e.id)).toEqual([kept.id]);
+      expect(await elementCount(db, post.id)).toBe(1);
+    }));
+});
+
+describe("saveVersionInput – Grenze pro Zelle", () => {
+  const cellWith = (elements: ElementInput[]) => ({
+    title: "T",
+    tagIds: [],
+    rows: [{ gridWidth: 1, gridHeight: 1, cells: [{ width: 1, height: 1, elements }] }],
+    updatedAt: new Date().toISOString(),
+  });
+  const many = (n: number) => Array.from({ length: n }, () => text("x"));
+
+  it("zählt Elemente in Containern mit", () => {
+    // Slide + 99 Kinder = 100: erlaubt; Slide + 100 Kinder = 101: zu viel.
+    expect(saveVersionInput.safeParse(cellWith([{ type: "slide", data: {}, children: many(MAX_CELL_ELEMENTS - 1) }])).success).toBe(true);
+    const tooMany = saveVersionInput.safeParse(cellWith([{ type: "slide", data: {}, children: many(MAX_CELL_ELEMENTS) }]));
+    expect(tooMany.success).toBe(false);
+    expect(tooMany.error?.issues[0].message).toBe(`Höchstens ${MAX_CELL_ELEMENTS} Elemente pro Zelle`);
+  });
+
+  it("erkennt doppelte Elemente auch in Containern", () => {
+    const id = crypto.randomUUID();
+    const result = saveVersionInput.safeParse(cellWith([{ type: "slide", data: {}, children: [text("a", id)] }, text("b", id)]));
+    expect(result.error?.issues[0].message).toBe("Element doppelt verwendet");
+  });
 });
 
 describe("saveVersion – veröffentlichte und eingefrorene Versionen", () => {

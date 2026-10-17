@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { cellElements, cells, elements, media, posts, rows, tags, versions, versionTags } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { excerpt } from "@/lib/excerpt";
@@ -65,7 +65,8 @@ export async function listTeasers(
       .from(versionTags)
       .innerJoin(tags, eq(tags.id, versionTags.tagId))
       .where(inArray(versionTags.versionId, versionIds)),
-    // Text- und Bild-Elemente in Lesereihenfolge Row → Zelle → Element.
+    // Text- und Bild-Elemente in Lesereihenfolge Row → Zelle → Element; nur direkt in der Zelle,
+    // nicht in Containern (Slides).
     db
       .select({ versionId: cellElements.versionId, element: elements, medium: media })
       .from(cellElements)
@@ -73,7 +74,13 @@ export async function listTeasers(
       .innerJoin(rows, eq(rows.id, cells.rowId))
       .innerJoin(elements, eq(elements.id, cellElements.elementId))
       .leftJoin(media, eq(media.id, elements.mediaId))
-      .where(and(inArray(cellElements.versionId, versionIds), inArray(elements.type, ["text", "image"])))
+      .where(
+        and(
+          inArray(cellElements.versionId, versionIds),
+          inArray(elements.type, ["text", "image"]),
+          isNull(cellElements.parentElementId),
+        ),
+      )
       .orderBy(asc(rows.position), asc(cells.position), asc(cellElements.position)),
   ]);
 

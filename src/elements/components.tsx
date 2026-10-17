@@ -2,6 +2,10 @@ import { HeadingShow } from "./heading/show";
 import { HeadingView } from "./heading/view";
 import { ImageShow } from "./image/show";
 import { ImageView } from "./image/view";
+import { ListShow } from "./list/show";
+import { ListView } from "./list/view";
+import { SlideShow } from "./slide/show";
+import { SlideView } from "./slide/view";
 import { TextShow } from "./text/show";
 import { TextView } from "./text/view";
 import type { ElementContent, ElementType } from "./schema";
@@ -16,6 +20,8 @@ const ELEMENT_COMPONENTS: { [T in ElementType]: { Show: Component<T>; View: Comp
   heading: { Show: HeadingShow, View: HeadingView },
   text: { Show: TextShow, View: TextView },
   image: { Show: ImageShow, View: ImageView },
+  list: { Show: ListShow, View: ListView },
+  slide: { Show: SlideShow, View: SlideView },
 };
 
 // Die Tabelle ist pro Typ getypt; hier wird das Element einmal auf seinen Typ eingeengt.

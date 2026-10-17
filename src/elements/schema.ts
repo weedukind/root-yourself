@@ -1,70 +1,131 @@
 import { z } from "zod";
 import { headingSchema } from "./heading/schema";
 import { imageSchema } from "./image/schema";
+import { listSchema } from "./list/schema";
+import { slideSchema } from "./slide/schema";
 import { textSchema } from "./text/schema";
 
 // Alle Elementtypen mit ihrer Definition (./<typ>/schema.ts, siehe define.ts). Daraus leiten
 // sich die Typen für API, Server und Editor ab. Ein neuer Typ: Ordner mit schema.ts, show.tsx
-// und view.tsx und je ein Eintrag hier und in components.tsx.
+// und view.tsx und je ein Eintrag hier und in components.tsx. Container (z. B. Slide) enthalten
+// weitere Elemente beliebigen Typs und beliebig tief.
 
-export const ELEMENT_SCHEMAS = { heading: headingSchema, text: textSchema, image: imageSchema };
+export const ELEMENT_SCHEMAS = {
+  heading: headingSchema,
+  text: textSchema,
+  image: imageSchema,
+  list: listSchema,
+  slide: slideSchema,
+};
 
 type Schemas = typeof ELEMENT_SCHEMAS;
 export type ElementType = keyof Schemas;
 export const ELEMENT_TYPES = Object.keys(ELEMENT_SCHEMAS) as ElementType[];
 export const elementLabel = (type: ElementType) => ELEMENT_SCHEMAS[type].label;
 export const isElementType = (type: string): type is ElementType => Object.hasOwn(ELEMENT_SCHEMAS, type);
+export const isContainer = (type: ElementType) => ELEMENT_SCHEMAS[type].container;
 
 export type MediaRef = { id: string; url: string; width: number; height: number; alt: string };
 
 type DataOf<T extends ElementType> = z.output<Schemas[T]["data"]>;
 type HasMedia<T extends ElementType> = Schemas[T]["media"] extends true ? true : false;
 type MediaPart<T extends ElementType> = HasMedia<T> extends true ? { mediaId: string; media: MediaRef } : unknown;
+/**
+ * Container haben children; L ist die Liste in der jeweiligen Form. Die Listen sind leere
+ * Interfaces (… extends Array<…>): Mit einem Typ-Alias wie ElementView[] meldet TypeScript
+ * „circularly references itself“, Interfaces löst es erst bei Bedarf auf.
+ */
+type ChildrenPart<T extends ElementType, L> = Schemas[T]["container"] extends true ? { children: L } : unknown;
 type Each<F extends { [T in ElementType]: unknown }> = F[ElementType];
 
 /** Inhalt ohne id – wie ihn Show und View brauchen. */
-export type ContentOf<T extends ElementType> = { type: T; data: DataOf<T> } & MediaPart<T>;
+export type ContentOf<T extends ElementType> = { type: T; data: DataOf<T> } & MediaPart<T> & ChildrenPart<T, ContentList>;
 export type ElementContent = Each<{ [T in ElementType]: ContentOf<T> }>;
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- Rekursion, siehe ChildrenPart
+interface ContentList extends Array<ElementContent> {}
 
 /** Geladenes Element (API-Antwort). */
-export type ElementView = Each<{ [T in ElementType]: { id: string } & ContentOf<T> }>;
+export type ElementView = Each<{ [T in ElementType]: { id: string; type: T; data: DataOf<T> } & MediaPart<T> & ChildrenPart<T, ViewList> }>;
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- Rekursion, siehe ChildrenPart
+interface ViewList extends Array<ElementView> {}
 
 /** Element beim Speichern; ohne id: neu. */
 export type ElementInput = Each<{
-  [T in ElementType]: { id?: string; type: T; data: DataOf<T> } & (HasMedia<T> extends true ? { mediaId: string } : unknown);
+  [T in ElementType]: { id?: string; type: T; data: DataOf<T> } & (HasMedia<T> extends true ? { mediaId: string } : unknown) &
+    ChildrenPart<T, InputList>;
 }>;
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- Rekursion, siehe ChildrenPart
+interface InputList extends Array<ElementInput> {}
 
 /** Element im Entwurf des Editors; `id` nur, wenn es schon gespeichert ist. */
-export type DraftOf<T extends ElementType> = { key: string; id?: string } & ContentOf<T>;
+export type DraftOf<T extends ElementType> = { key: string; id?: string; type: T; data: DataOf<T> } & MediaPart<T> &
+  ChildrenPart<T, DraftList>;
 export type DraftElement = Each<{ [T in ElementType]: DraftOf<T> }>;
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- Rekursion, siehe ChildrenPart
+interface DraftList extends Array<DraftElement> {}
 
 /** Element im Formular: wie im Entwurf, aber vielleicht unvollständig (z. B. noch kein Bild gewählt). */
-export type CandidateOf<T extends ElementType> = { key: string; id?: string; type: T; data: DataOf<T> } & Partial<MediaPart<T>>;
+export type CandidateOf<T extends ElementType> = { key: string; id?: string; type: T; data: DataOf<T> } & Partial<MediaPart<T>> &
+  ChildrenPart<T, CandidateList>;
 export type ElementCandidate = Each<{ [T in ElementType]: CandidateOf<T> }>;
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- Rekursion, siehe ChildrenPart
+interface CandidateList extends Array<ElementCandidate> {}
 
-function inputSchema(type: ElementType) {
-  const { data, media } = ELEMENT_SCHEMAS[type];
-  return z.object({ id: z.uuid().optional(), type: z.literal(type), data, ...(media ? { mediaId: z.uuid() } : {}) });
+/** Kinder eines Elements; leer, wenn es kein Container ist. */
+export const childrenOf = <E extends { type: ElementType }>(element: E): E[] =>
+  "children" in element ? (element.children as E[]) : [];
+
+/** Alle Elemente eines Baums in Lesereihenfolge (Elternteil vor seinen Kindern). */
+export function flattenElements<E extends { type: ElementType }>(list: E[]): E[] {
+  return list.flatMap((element) => [element, ...flattenElements(childrenOf(element))]);
 }
 
-type InputSchema = ReturnType<typeof inputSchema>;
-export const elementInput = z.discriminatedUnion(
-  "type",
-  ELEMENT_TYPES.map(inputSchema) as [InputSchema, ...InputSchema[]],
+function inputSchema(type: ElementType): z.ZodType {
+  const { data, media, container } = ELEMENT_SCHEMAS[type];
+  return z.object({
+    id: z.uuid().optional(),
+    type: z.literal(type),
+    data,
+    ...(media ? { mediaId: z.uuid() } : {}),
+    // Rekursiv: Kinder beliebigen Typs. Die Menge begrenzt cellInput (versions.ts).
+    ...(container ? { children: z.array(z.lazy(() => elementInput)) } : {}),
+  });
+}
+
+export const elementInput: z.ZodType<ElementInput> = z.lazy(() =>
+  z.discriminatedUnion("type", ELEMENT_TYPES.map(inputSchema) as [z.ZodObject, ...z.ZodObject[]]),
 ) as unknown as z.ZodType<ElementInput>;
 
 export const newElement = (type: ElementType, key: string) =>
-  ({ key, type, data: ELEMENT_SCHEMAS[type].empty() }) as ElementCandidate;
+  ({ key, type, data: ELEMENT_SCHEMAS[type].empty(), ...(isContainer(type) ? { children: [] } : {}) }) as ElementCandidate;
 
-/** Das fertige Element oder der Grund, warum es so noch nicht geht – nach dem Schema des Servers. */
+/** Pfad eines Elements im Baum eines Containers: Indizes der Kinder, [] ist die Wurzel. */
+export type TreePath = number[];
+export const pathKey = (path: TreePath) => path.join(".");
+
+/** Warum ein einzelnes Element (ohne seine Kinder) so noch nicht geht; null: in Ordnung. */
+function problemOf(candidate: ElementCandidate): string | null {
+  const schema = ELEMENT_SCHEMAS[candidate.type];
+  if (schema.media && !("media" in candidate && candidate.media)) return "Zuerst ein Bild aus der Mediathek wählen.";
+  const parsed = schema.data.safeParse(candidate.data);
+  return parsed.success ? null : (parsed.error.issues[0]?.message ?? "Ungültig");
+}
+
+/** Probleme aller Elemente eines Baums, nach Pfad (pathKey). */
+export function elementProblems(candidate: ElementCandidate, path: TreePath = []): Map<string, string> {
+  const problems = new Map<string, string>();
+  const own = problemOf(candidate);
+  if (own) problems.set(pathKey(path), own);
+  childrenOf(candidate).forEach((child, i) => {
+    for (const [key, problem] of elementProblems(child, [...path, i])) problems.set(key, problem);
+  });
+  return problems;
+}
+
+/** Das fertige Element samt Kindern oder das erste Problem – nach dem Schema des Servers. */
 export function completeElement(
   candidate: ElementCandidate,
 ): { ok: true; element: DraftElement } | { ok: false; problem: string } {
-  const schema = ELEMENT_SCHEMAS[candidate.type];
-  if (schema.media && !("media" in candidate && candidate.media)) {
-    return { ok: false, problem: "Zuerst ein Bild aus der Mediathek wählen." };
-  }
-  const parsed = schema.data.safeParse(candidate.data);
-  if (!parsed.success) return { ok: false, problem: parsed.error.issues[0]?.message ?? "Ungültig" };
-  return { ok: true, element: candidate as DraftElement };
+  const [problem] = elementProblems(candidate).values();
+  return problem ? { ok: false, problem } : { ok: true, element: candidate as DraftElement };
 }

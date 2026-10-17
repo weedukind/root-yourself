@@ -3,10 +3,19 @@
 import { useCallback, useRef, useState } from "react";
 import { ViewElement } from "@/elements/components";
 import { ElementForm } from "@/elements/form";
-import { completeElement, type ElementCandidate, elementLabel, ELEMENT_TYPES, type ElementType } from "@/elements/schema";
+import {
+  completeElement,
+  type ElementCandidate,
+  elementLabel,
+  ELEMENT_TYPES,
+  type ElementType,
+  isContainer,
+  type TreePath,
+} from "@/elements/schema";
 import { Modal } from "../modal";
 import { inputClass, primaryButton, secondaryButton, smallButton as small } from "../ui";
 import { useDismiss } from "../use-dismiss";
+import { ContainerDialog } from "./container-dialog";
 import {
   cellTargets,
   createElement,
@@ -27,7 +36,18 @@ import {
 type Update = (change: (draft: Draft) => Draft) => void;
 
 // index: Stelle in der Zelle – beim Bearbeiten das Element, beim Hinzufügen der Einfügeplatz.
-type Dialog = { mode: "add" | "edit"; index: number; element: ElementCandidate };
+// select: bei Containern das Kind, das im Popup zuerst gewählt ist.
+type Dialog = { mode: "add" | "edit"; index: number; element: ElementCandidate; select?: TreePath };
+
+/** Pfad des Kindes, auf das in der View eines Containers geklickt wurde (data-child-index, siehe slide/view.tsx). */
+function childPath(target: EventTarget, container: Element): TreePath {
+  const path: TreePath = [];
+  for (let el = target as Element | null; el && el !== container; el = el.parentElement) {
+    const index = (el as HTMLElement).dataset?.childIndex;
+    if (index !== undefined) path.unshift(Number(index));
+  }
+  return path;
+}
 
 export function CellElements({
   draft,
@@ -108,7 +128,15 @@ export function CellElements({
               </div>
               <div
                 className="prose prose-zinc max-w-none"
-                onDoubleClick={readOnly ? undefined : () => setDialog({ mode: "edit", index: i, element })}
+                onDoubleClick={
+                  readOnly
+                    ? undefined
+                    : (e) => {
+                        // Doppelklick auf Pfeile eines Karussells blättert nur.
+                        if ((e.target as Element).closest("button")) return;
+                        setDialog({ mode: "edit", index: i, element, select: childPath(e.target, e.currentTarget) });
+                      }
+                }
               >
                 <ViewElement element={element} />
               </div>
@@ -120,14 +148,23 @@ export function CellElements({
 
       {!readOnly && elements.length === 0 && <AddElementMenu onAdd={add(0)} />}
 
-      {dialog && (
-        <ElementDialog
-          title={`${elementLabel(dialog.element.type)} ${dialog.mode === "add" ? "hinzufügen" : "bearbeiten"}`}
-          initial={dialog.element}
-          onApply={apply}
-          onClose={() => setDialog(null)}
-        />
-      )}
+      {dialog &&
+        (isContainer(dialog.element.type) ? (
+          <ContainerDialog
+            title={`${elementLabel(dialog.element.type)} ${dialog.mode === "add" ? "hinzufügen" : "bearbeiten"}`}
+            initial={dialog.element}
+            select={dialog.select}
+            onApply={apply}
+            onClose={() => setDialog(null)}
+          />
+        ) : (
+          <ElementDialog
+            title={`${elementLabel(dialog.element.type)} ${dialog.mode === "add" ? "hinzufügen" : "bearbeiten"}`}
+            initial={dialog.element}
+            onApply={apply}
+            onClose={() => setDialog(null)}
+          />
+        ))}
     </div>
   );
 }
@@ -188,7 +225,7 @@ function ElementDialog({
   const check = completeElement(element);
 
   return (
-    <Modal title={title} wide onClose={onClose}>
+    <Modal title={title} size="lg" onClose={onClose}>
       <form
         className="space-y-4"
         onSubmit={(e) => {

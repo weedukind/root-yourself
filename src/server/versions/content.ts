@@ -1,7 +1,7 @@
 import { and, asc, countDistinct, eq, inArray, max, sql } from "drizzle-orm";
 import { cellElements, cells, elements, media, rows, tags, versions, versionTags } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { ELEMENT_SCHEMAS, isElementType } from "@/elements/schema";
+import { childrenOf, ELEMENT_SCHEMAS, isContainer, isElementType } from "@/elements/schema";
 import { byName } from "@/lib/sort";
 import type {
   CellView,
@@ -25,7 +25,7 @@ type MediaRow = typeof media.$inferSelect;
 
 function toElementView(row: ElementRow, medium: MediaRow | null, storage: MediaStorage): ElementView {
   if (!isElementType(row.type)) throw new Error(`Unbekannter Elementtyp ${row.type}`);
-  const element = { id: row.id, type: row.type, data: row.data };
+  const element = { id: row.id, type: row.type, data: row.data, ...(isContainer(row.type) ? { children: [] } : {}) };
   // Ob ein Typ ein Bild hat, sichert die Datenbank (elements_media_check, siehe ELEMENT_SCHEMAS).
   if (!ELEMENT_SCHEMAS[row.type].media) return element as ElementView;
   return {
@@ -69,8 +69,14 @@ export async function getVersion(
       .orderBy(asc(cellElements.position)),
   ]);
 
+  // Elemente als Baum: Kinder hängen am Container (parent_element_id), Positionen je Elternteil.
+  const views = new Map(links.map((l) => [l.link.elementId, toElementView(l.element, l.medium, storage)]));
+  for (const { link } of links) {
+    const parent = link.parentElementId ? views.get(link.parentElementId) : undefined;
+    if (parent) childrenOf(parent).push(views.get(link.elementId)!);
+  }
   const cellView = (cellId: string): CellView["elements"] =>
-    links.filter((l) => l.link.cellId === cellId).map((l) => toElementView(l.element, l.medium, storage));
+    links.filter((l) => l.link.cellId === cellId && !l.link.parentElementId).map((l) => views.get(l.link.elementId)!);
 
   const rowViews: RowView[] = rowRows.map((row) => ({
     id: row.id,
@@ -145,7 +151,8 @@ export async function saveVersion(
 
       // Bestehende Elemente dürfen nur aus dieser Version stammen. Vor dem Fork prüfen, damit
       // bei einem Fehler kein leerer Fork übrig bleibt.
-      const inputElements = input.rows.flatMap((row) => row.cells.flatMap((cell) => cell.elements));
+      const placed = placeElements(input);
+      const inputElements = placed.map((p) => p.element);
       const sourceLinks = await tx
         .select({ elementId: cellElements.elementId })
         .from(cellElements)
@@ -209,7 +216,7 @@ export async function saveVersion(
       // Layout und Tags der Zielversion neu schreiben (Strukturdaten ohne Inhalt).
       await tx.delete(rows).where(eq(rows.versionId, targetId));
       await tx.delete(versionTags).where(eq(versionTags.versionId, targetId));
-      await writeLayout(tx, postId, targetId, input, resolvedIds);
+      await writeLayout(tx, postId, targetId, input, placed, resolvedIds);
       if (input.tagIds.length > 0) {
         await tx.insert(versionTags).values(input.tagIds.map((tagId) => ({ versionId: targetId, tagId })));
       }
@@ -237,12 +244,28 @@ export async function saveVersion(
   return ok({ version: saved.value, forkedFrom: outcome.value.forkedFrom });
 }
 
+/** Ein Element der Eingabe mit seinem Platz: Zelle, Elternteil (Index in der Liste) und Position. */
+type Placed = { element: ElementInput; row: number; cell: number; parent: number | null; position: number };
+
+/** Alle Elemente der Eingabe in Lesereihenfolge, Elternteil vor seinen Kindern. */
+function placeElements(input: SaveVersionInput): Placed[] {
+  const placed: Placed[] = [];
+  const visit = (list: ElementInput[], row: number, cell: number, parent: number | null) =>
+    list.forEach((element, position) => {
+      placed.push({ element, row, cell, parent, position });
+      visit(childrenOf(element), row, cell, placed.length - 1);
+    });
+  input.rows.forEach((row, r) => row.cells.forEach((cell, c) => visit(cell.elements, r, c, null)));
+  return placed;
+}
+
 /** Schreibt Rows, Zellen und Element-Verknüpfungen; die Reihenfolge der Arrays ergibt die Positionen. */
 async function writeLayout(
   tx: Db,
   postId: string,
   versionId: string,
   input: SaveVersionInput,
+  placed: Placed[],
   elementIds: string[],
 ): Promise<void> {
   if (input.rows.length === 0) return;
@@ -265,17 +288,13 @@ async function writeLayout(
   const newCells = await tx.insert(cells).values(cellValues).returning({ id: cells.id, rowId: cells.rowId, position: cells.position });
   const cellIds = new Map(newCells.map((c) => [`${c.rowId}:${c.position}`, c.id]));
 
-  let next = 0;
-  const links = input.rows.flatMap((row, rowPosition) =>
-    row.cells.flatMap((cell, cellPosition) =>
-      cell.elements.map((_, position) => ({
-        cellId: cellIds.get(`${rowIds.get(rowPosition)}:${cellPosition}`)!,
-        versionId,
-        postId,
-        position,
-        elementId: elementIds[next++],
-      })),
-    ),
-  );
+  const links = placed.map((p, i) => ({
+    cellId: cellIds.get(`${rowIds.get(p.row)}:${p.cell}`)!,
+    versionId,
+    postId,
+    position: p.position,
+    elementId: elementIds[i],
+    parentElementId: p.parent === null ? null : elementIds[p.parent],
+  }));
   if (links.length > 0) await tx.insert(cellElements).values(links);
 }

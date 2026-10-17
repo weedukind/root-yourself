@@ -226,11 +226,20 @@ export const cellElements = pgTable(
     postId: uuid("post_id").notNull(),
     position: integer("position").notNull(),
     elementId: uuid("element_id").notNull(),
+    // Container-Element (z. B. Slide), in dem das Element steht; null: direkt in der Zelle.
+    // Die Position zählt innerhalb des Elternteils.
+    parentElementId: uuid("parent_element_id"),
   },
   (t) => [
-    primaryKey({ columns: [t.cellId, t.position] }),
     // Jedes Element höchstens einmal pro Version.
-    unique("cell_elements_version_element_unique").on(t.versionId, t.elementId),
+    primaryKey({ name: "cell_elements_pkey", columns: [t.versionId, t.elementId] }),
+    unique("cell_elements_position_unique").on(t.cellId, t.parentElementId, t.position).nullsNotDistinct(),
+    // Das Elternteil steht in derselben Version; fällt es weg, fallen seine Kinder mit.
+    foreignKey({
+      name: "cell_elements_parent_fk",
+      columns: [t.versionId, t.parentElementId],
+      foreignColumns: [t.versionId, t.elementId],
+    }).onDelete("cascade"),
     foreignKey({
       name: "cell_elements_cell_fk",
       columns: [t.versionId, t.cellId],

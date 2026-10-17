@@ -92,6 +92,26 @@ Next.js-App. Es gibt genau eine Person, die Posts schreibt.
     daneben verwerfen. „Übernehmen“ ist gesperrt, solange das Element nicht zu
     seiner Definition passt (z. B. Überschrift ohne Text, Bild ohne Bild).
   Eingefrorene Versionen zeigen nur View, ohne Steuerelemente.
+  **Container-Elemente** (`container: true` in der Definition) enthalten beliebig
+  viele Elemente beliebigen Typs, auch weitere Container, beliebig tief – sinnvoll
+  zu verschachteln liegt bei der Autorin. Die Kinder sind eigene Elemente (Copy-on-
+  Write, Bildschutz wie überall) und hängen über `cell_elements.parent_element_id`
+  am Container; ihre Position zählt innerhalb des Containers. Schutz gegen riesige
+  Bäume (auch über die API): höchstens 100 Elemente pro Zelle, Verschachteltes
+  mitgezählt (`MAX_CELL_ELEMENTS`). Das Popup eines Containers hat links einen
+  Baum (Wurzel: der Container, Zweige: seine Kinder) und rechts das Formular des
+  gewählten Elements. Kinder hinzufügen, nach oben/unten, ausschneiden und in
+  einen anderen Container einfügen, löschen: Menü eines Knotens (Rechtsklick oder
+  „⋯“). „Übernehmen“ übernimmt den ganzen Baum und ist gesperrt, solange ein
+  Element unvollständig ist (im Baum rot markiert); eine leere Slide ist erlaubt.
+  Ein Doppelklick auf ein Kind in der View öffnet das Popup mit diesem Kind gewählt.
+  - **Slide** (`slide`): Container ohne eigene Attribute. Im Frontend stehen die
+    Kinder nebeneinander, je 300 × 300 px (Bilder schrumpfen, damit eine
+    Unterschrift Platz hat; zu viel Inhalt wird abgeschnitten). Passen sie nicht in
+    die Breite, erscheinen Pfeile links und rechts; auf dem Handy auch wischen.
+    View wie Show.
+  - **Liste** (`list`): Container ohne eigene Attribute. Die Kinder stehen
+    untereinander, ohne Aufzählungszeichen. View wie Show.
   `src/elements/schema.ts` sammelt die Definitionen; daraus leiten sich die Typen
   für API, Server und Editor ab. Ein neuer Typ braucht einen Ordner (`schema.ts`,
   `show.tsx`, `view.tsx`) und je einen Eintrag in `src/elements/schema.ts` und
@@ -132,7 +152,8 @@ Footer   – für alle Seiten gleich, im Code
   umsortiert werden.
 - Leere Rows und leere Zellen sind erlaubt.
 - Lesereihenfolge (Anreißer, Teaser-Bild, später Suche):
-  Row → Zelle → Element, jeweils nach `position`.
+  Row → Zelle → Element, jeweils nach `position`. Anreißer und Teaser-Bild
+  kommen nur aus Elementen direkt in der Zelle, nicht aus Containern.
 
 ## Versionierung
 
@@ -296,11 +317,12 @@ erDiagram
         int height
     }
     cell_elements {
-        uuid cell_id PK,FK
-        int position PK
-        uuid version_id FK
+        uuid version_id PK,FK
+        uuid element_id PK,FK
+        uuid cell_id FK
+        uuid parent_element_id FK "Container oder null"
+        int position
         uuid post_id FK
-        uuid element_id FK
     }
     elements {
         uuid id PK
@@ -452,9 +474,14 @@ CREATE TABLE cell_elements (
   post_id     uuid NOT NULL,
   position    integer NOT NULL,
   element_id  uuid NOT NULL,
-  PRIMARY KEY (cell_id, position),
+  -- Container-Element, in dem das Element steht; null: direkt in der Zelle.
+  parent_element_id uuid,
   -- Jedes Element höchstens einmal pro Version.
-  UNIQUE (version_id, element_id),
+  PRIMARY KEY (version_id, element_id),
+  -- Position je Zelle und Elternteil.
+  UNIQUE NULLS NOT DISTINCT (cell_id, parent_element_id, position),
+  -- Das Elternteil steht in derselben Version; fällt es weg, fallen seine Kinder mit.
+  FOREIGN KEY (version_id, parent_element_id) REFERENCES cell_elements (version_id, element_id) ON DELETE CASCADE,
   -- Zelle, Version und Element gehören zusammen.
   FOREIGN KEY (version_id, cell_id) REFERENCES cells (version_id, id) ON DELETE CASCADE,
   FOREIGN KEY (post_id, version_id) REFERENCES versions (post_id, id) ON DELETE CASCADE,

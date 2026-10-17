@@ -10,9 +10,15 @@ type DataShape<A> = { [K in Exclude<keyof A, MediaKeys<A>>]: A[K] extends { sche
  * - data: das Zod-Schema für elements.data (Server und Popup prüfen damit)
  * - media: ob der Typ auf ein Bild der Mediathek verweist (elements.media_id)
  * - empty: die Daten eines neuen Elements aus den Defaults
+ * - container: das Element enthält andere Elemente beliebigen Typs (children); sie stehen nicht
+ *   in data, sondern als eigene Elemente in cell_elements (parent_element_id)
  * Das Formular des Edit-Modus baut form.tsx aus denselben Attributen.
  */
-export function defineElement<const A extends Record<string, Attribute>>(definition: { label: string; attributes: A }) {
+export function defineElement<const A extends Record<string, Attribute>, const C extends boolean = false>(definition: {
+  label: string;
+  attributes: A;
+  container?: C;
+}) {
   const entries = Object.entries(definition.attributes) as [string, Attribute][];
   const mediaRefs = entries.filter(([, a]) => a.kind === "mediaRef");
   if (mediaRefs.length > 1) throw new Error(`${definition.label}: höchstens ein Bild-Attribut (Spalte elements.media_id)`);
@@ -24,6 +30,7 @@ export function defineElement<const A extends Record<string, Attribute>>(definit
     attributes: definition.attributes,
     data,
     media: (mediaRefs.length > 0) as [MediaKeys<A>] extends [never] ? false : true,
+    container: (definition.container ?? false) as C,
     empty: () =>
       Object.fromEntries(
         fields.flatMap(([key, a]) => {

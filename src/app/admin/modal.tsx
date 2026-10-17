@@ -8,19 +8,21 @@ import { useEffect, useId, useRef } from "react";
  * locked: gerade nicht schließbar (z. B. während eines Uploads). Den Fokus bekommt ein Feld mit
  * data-autofocus.
  */
+const SIZES = { md: "max-w-md", lg: "max-w-2xl", xl: "max-w-5xl" };
+
 export function Modal({
   title,
   description,
   onClose,
   locked = false,
-  wide = false,
+  size = "md",
   children,
 }: {
   title: string;
   description?: React.ReactNode;
   onClose: () => void;
   locked?: boolean;
-  wide?: boolean;
+  size?: "md" | "lg" | "xl";
   children: React.ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -46,7 +48,7 @@ export function Modal({
       onClick={(e) => {
         if (e.target === ref.current && !locked) ref.current.close();
       }}
-      className={`m-auto w-full ${wide ? "max-w-2xl" : "max-w-md"} rounded border border-zinc-200 bg-white p-0 text-zinc-900 shadow-xl backdrop:bg-black/40`}
+      className={`m-auto w-full ${SIZES[size]} rounded border border-zinc-200 bg-white p-0 text-zinc-900 shadow-xl backdrop:bg-black/40`}
     >
       <div className="space-y-4 p-5">
         <div className="flex items-start justify-between gap-4">

@@ -82,12 +82,14 @@ async function copyStructure(tx: Db, from: VersionRow, toVersionId: string): Pro
   const links = await tx.select().from(cellElements).where(eq(cellElements.versionId, from.id));
   if (links.length === 0) return;
   await tx.insert(cellElements).values(
-    links.map(({ cellId: oldCellId, postId, position, elementId }) => ({
+    // Elemente (auch die Elternteile in Containern) werden geteilt, ihre IDs bleiben gleich.
+    links.map(({ cellId: oldCellId, postId, position, elementId, parentElementId }) => ({
       cellId: cellId.get(oldCellId)!,
       versionId: toVersionId,
       postId,
       position,
       elementId,
+      parentElementId,
     })),
   );
 }

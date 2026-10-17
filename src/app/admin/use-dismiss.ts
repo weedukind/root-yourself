@@ -16,7 +16,10 @@ export function useDismiss(
       if (!ref.current?.contains(e.target as Node)) onClose();
     };
     const escape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key !== "Escape") return;
+      // Nur das Menü schließen, nicht auch ein Popup, in dem es steht.
+      e.preventDefault();
+      onClose();
     };
     document.addEventListener("mousedown", outside);
     document.addEventListener("keydown", escape);

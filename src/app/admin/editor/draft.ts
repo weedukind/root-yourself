@@ -1,5 +1,5 @@
 import { type DraftElement, type ElementCandidate, type ElementType, newElement } from "@/elements/schema";
-import type { ElementInput, RowView, SaveVersionInput, VersionDetail } from "@/shared/api/versions";
+import type { ElementInput, ElementView, RowView, SaveVersionInput, VersionDetail } from "@/shared/api/versions";
 import { placeCells } from "@/shared/grid-placement";
 
 // Arbeitsstand des Editors. Jedes Objekt hat einen `key` für React; `id` haben nur Elemente,
@@ -29,15 +29,34 @@ export function fromVersion(version: VersionDetail): Draft {
         key: cell.id,
         width: cell.width,
         height: cell.height,
-        elements: cell.elements.map((e) => ({ ...e, key: e.id }) as DraftElement),
+        elements: cell.elements.map(toDraftElement),
       })),
     })),
   };
 }
 
+function toDraftElement(element: ElementView): DraftElement {
+  return { ...element, key: element.id, ...("children" in element ? { children: element.children.map(toDraftElement) } : {}) } as DraftElement;
+}
+
 function toElementInput(element: DraftElement): ElementInput {
   const { id, type, data } = element;
-  return ("mediaId" in element ? { id, type, data, mediaId: element.mediaId } : { id, type, data }) as ElementInput;
+  return {
+    id,
+    type,
+    data,
+    ...("mediaId" in element ? { mediaId: element.mediaId } : {}),
+    ...("children" in element ? { children: element.children.map(toElementInput) } : {}),
+  } as ElementInput;
+}
+
+function toElementView(element: DraftElement): ElementView {
+  const { key, ...rest } = element;
+  return {
+    ...rest,
+    id: element.id ?? key,
+    ...("children" in element ? { children: element.children.map(toElementView) } : {}),
+  } as ElementView;
 }
 
 export function toInput(draft: Draft, updatedAt: string): SaveVersionInput {
@@ -67,7 +86,7 @@ export function toRowViews(draft: Draft): RowView[] {
       id: cell.key,
       width: cell.width,
       height: cell.height,
-      elements: cell.elements.map((e) => ({ ...e, id: e.id ?? e.key }) as RowView["cells"][number]["elements"][number]),
+      elements: cell.elements.map(toElementView),
     })),
   }));
 }
