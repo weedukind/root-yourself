@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { elements, media, tags, versions } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { PostDetail } from "@/shared/api/posts";
@@ -16,6 +16,17 @@ import { getVersion, saveVersion } from "./content";
 import { forkVersion, publishVersion } from "./versions";
 
 const { storage } = memoryStorage();
+
+// previewPath enthält ein Token mit Ablaufzeit aus new Date(). Läuft die Uhr zwischen Speichern
+// und erneutem Laden über eine Zeitgrenze, unterscheiden sich die Tokens – daher Date anhalten
+// (nur Date: Timer braucht der Datenbanktreiber).
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-17T12:00:00Z"));
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 async function newPost(db: Db): Promise<PostDetail> {
   const result = await createPost(db, { title: "Wurzeln" });

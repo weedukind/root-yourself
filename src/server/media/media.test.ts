@@ -126,7 +126,9 @@ describe("Ordner", () => {
   it("listet die Bilder eines Ordners, auch kombiniert mit einem Tag", () =>
     withRollback(async (db) => {
       const mem = memoryStorage();
-      const [a, b] = [await createFolder(db, "A"), await createFolder(db, "B")];
+      // Zufällige Namen: Feste wie „A“ kollidieren mit parallel laufenden Testdateien
+      // (Eindeutigkeit je Elternordner + LOCK TABLE beim Verschieben → Deadlock).
+      const [a, b] = [await createFolder(db), await createFolder(db)];
       const inA = await uploaded(db, mem, a);
       await uploaded(db, mem, b);
       const [tag] = await db.insert(tags).values({ name: "Wurzeln", slug: "wurzeln" }).returning();

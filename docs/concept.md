@@ -94,8 +94,9 @@ Next.js-App. Es gibt genau eine Person, die Posts schreibt.
   Eingefrorene Versionen zeigen nur View, ohne Steuerelemente.
   `src/elements/schema.ts` sammelt die Definitionen; daraus leiten sich die Typen
   für API, Server und Editor ab. Ein neuer Typ braucht einen Ordner (`schema.ts`,
-  `show.tsx`, `view.tsx`) und je einen Eintrag in `src/elements/schema.ts`,
-  `show.tsx` und `admin.tsx`. Bekommt ein weiterer Typ ein `mediaRef`, muss der
+  `show.tsx`, `view.tsx`) und je einen Eintrag in `src/elements/schema.ts` und
+  `src/elements/components.tsx` (Show und View; ohne `"use client"`, damit Show
+  auch auf dem Server rendert). Bekommt ein weiterer Typ ein `mediaRef`, muss der
   Check `elements_media_check` (fest auf `image`) per Migration angepasst werden.
 - **Tag**: Name und Slug. Gemeinsam für Posts und Medien: an Posts als
   Metadaten pro Version, an Medien zum Ordnen der Mediathek (nicht versioniert).

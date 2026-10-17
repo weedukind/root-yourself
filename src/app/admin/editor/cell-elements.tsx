@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { ViewElement } from "@/elements/admin";
+import { ViewElement } from "@/elements/components";
 import { ElementForm } from "@/elements/form";
 import { completeElement, type ElementCandidate, elementLabel, ELEMENT_TYPES, type ElementType } from "@/elements/schema";
 import { Modal } from "../modal";

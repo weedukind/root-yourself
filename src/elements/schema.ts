@@ -5,7 +5,7 @@ import { textSchema } from "./text/schema";
 
 // Alle Elementtypen mit ihrer Definition (./<typ>/schema.ts, siehe define.ts). Daraus leiten
 // sich die Typen für API, Server und Editor ab. Ein neuer Typ: Ordner mit schema.ts, show.tsx
-// und view.tsx und je ein Eintrag hier, in show.tsx und in admin.tsx.
+// und view.tsx und je ein Eintrag hier und in components.tsx.
 
 export const ELEMENT_SCHEMAS = { heading: headingSchema, text: textSchema, image: imageSchema };
 

@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { ShowElement } from "@/elements/show";
+import { ShowElement } from "@/elements/components";
 import type { RowView } from "@/shared/api/versions";
 
 // Darstellung des Inhalts einer Version. Gemeinsam für die Vorschau im Editor und die
