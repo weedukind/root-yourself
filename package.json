@@ -16,6 +16,7 @@
     "db:studio": "drizzle-kit studio",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "typecheck": "next typegen && tsc --noEmit",
     "user:hash": "node scripts/hash-password.mjs"
   },
@@ -36,6 +37,7 @@
   },
   "devDependencies": {
     "@next/env": "^16.3.4",
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/postcss": "^4",
     "@tailwindcss/typography": "^0.5.20",
     "@types/mdast": "^4.0.4",

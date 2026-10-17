@@ -35,6 +35,13 @@ Next.js-App. Es gibt genau eine Person, die Posts schreibt.
   `production` einspielen und nur solche, die der laufende Code verträgt (neue Tabellen
   und Spalten ja, Umbenennen oder Löschen nicht).
 - Vercel deployt den Zweig `production` in die Produktion; `main` ergibt ein Preview.
+- Tests: `npm test` (Vitest, eigene Testdatenbank `rootyourself_test`) und
+  `npm run test:e2e` (Playwright, `e2e/`) gegen die laufende Docker-App auf Port 3002
+  (`E2E_BASE_URL` überschreibt). Die Browser-Tests nutzen das installierte Google Chrome.
+  Das Setup legt in der Entwicklungsdatenbank den Nutzer `e2e-test@example.com` an und
+  meldet ihn an, das Teardown löscht ihn wieder; Ordner und Posts heißen „E2E …“ und
+  werden nach jedem Test entfernt, auch wenn er fehlschlägt. Läuft App oder
+  `DATABASE_URL` nicht auf localhost, brechen die Tests ab (Neon ist geteilt).
 - RustFS ersetzt lokal Cloudflare R2 (MinIO wird nicht mehr als Image veröffentlicht). Der Code
   spricht nur die S3-API; umgeschaltet wird über die `S3_…`-Variablen. `storage-setup` legt beim
   Start den Bucket an und setzt öffentliches Lesen und CORS (`scripts/setup-storage.mjs`).
