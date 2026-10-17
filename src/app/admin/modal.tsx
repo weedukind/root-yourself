@@ -5,7 +5,8 @@ import { useEffect, useId, useRef } from "react";
 /**
  * Popup (modaler <dialog>), offen solange es eingeblendet ist. Schließen per ×, Escape oder
  * Klick auf den abgedunkelten Hintergrund meldet onClose; der Aufrufer blendet es dann aus.
- * locked: gerade nicht schließbar (z. B. während eines Uploads).
+ * locked: gerade nicht schließbar (z. B. während eines Uploads). Den Fokus bekommt ein Feld mit
+ * data-autofocus.
  */
 export function Modal({
   title,
@@ -27,6 +28,9 @@ export function Modal({
 
   useEffect(() => {
     ref.current?.showModal();
+    // showModal setzt den Fokus auf das erste fokussierbare Element; ein Feld mit data-autofocus
+    // geht vor (autoFocus von React greift hier nicht, das Feld existiert vor dem Öffnen).
+    ref.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
   }, []);
 
   return (

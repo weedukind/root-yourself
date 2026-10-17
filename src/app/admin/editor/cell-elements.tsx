@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { EditElement, elementLabel, ViewElement } from "@/elements/admin";
-import { completeElement, type ElementCandidate, ELEMENT_TYPES, type ElementType } from "@/elements/schema";
+import { ViewElement } from "@/elements/admin";
+import { ElementForm } from "@/elements/form";
+import { completeElement, type ElementCandidate, elementLabel, ELEMENT_TYPES, type ElementType } from "@/elements/schema";
 import { Modal } from "../modal";
 import { inputClass, primaryButton, secondaryButton, smallButton as small } from "../ui";
 import { useDismiss } from "../use-dismiss";
@@ -195,7 +196,7 @@ function ElementDialog({
           if (check.ok) onApply(check.element);
         }}
       >
-        <EditElement element={element} onChange={setElement} />
+        <ElementForm element={element} onChange={setElement} />
         <div className="flex flex-wrap items-center gap-2">
           <button type="submit" className={primaryButton} disabled={!check.ok}>
             Übernehmen

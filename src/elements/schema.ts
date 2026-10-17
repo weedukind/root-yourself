@@ -3,15 +3,16 @@ import { headingSchema } from "./heading/schema";
 import { imageSchema } from "./image/schema";
 import { textSchema } from "./text/schema";
 
-// Alle Elementtypen mit ihrem Schema (./<typ>/schema.ts). Daraus leiten sich die Typen für
-// API, Server und Editor ab. Ein neuer Typ: Ordner mit schema.ts, show.tsx, view.tsx, edit.tsx
-// und je ein Eintrag hier, in show.tsx und in admin.tsx.
+// Alle Elementtypen mit ihrer Definition (./<typ>/schema.ts, siehe define.ts). Daraus leiten
+// sich die Typen für API, Server und Editor ab. Ein neuer Typ: Ordner mit schema.ts, show.tsx
+// und view.tsx und je ein Eintrag hier, in show.tsx und in admin.tsx.
 
 export const ELEMENT_SCHEMAS = { heading: headingSchema, text: textSchema, image: imageSchema };
 
 type Schemas = typeof ELEMENT_SCHEMAS;
 export type ElementType = keyof Schemas;
 export const ELEMENT_TYPES = Object.keys(ELEMENT_SCHEMAS) as ElementType[];
+export const elementLabel = (type: ElementType) => ELEMENT_SCHEMAS[type].label;
 export const isElementType = (type: string): type is ElementType => Object.hasOwn(ELEMENT_SCHEMAS, type);
 
 export type MediaRef = { id: string; url: string; width: number; height: number; alt: string };

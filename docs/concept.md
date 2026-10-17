@@ -56,26 +56,40 @@ Next.js-App. Es gibt genau eine Person, die Posts schreibt.
   untereinander. Typen: `heading`, `text` (Markdown), `image` (verweist auf
   die Mediathek); weitere folgen. Mehrere Versionen desselben Posts können
   dasselbe Element verwenden (Copy-on-Write).
-  Ein Element ist in einem von drei **Modi**; was jeder zeigt, bestimmt der
-  Elementtyp selbst (`src/elements/<typ>/show.tsx`, `view.tsx`, `edit.tsx`):
-  - **Show** – wie die Website es zeigt (auch die Vorschau im Editor).
-  - **View** – wie der Editor es zeigt; wie Show, nur Bilder als Vorschau
-    (höchstens 300 × 300 px). Der Editor legt die
-    Steuerelemente drumherum (↑ ↓, in andere Zelle, ✎, ✕) und darunter
-    „+ Element hinzufügen“ mit den verfügbaren Typen.
-  - **Edit** – das Formular. Hinzufügen und Bearbeiten (✎ oder Doppelklick)
-    öffnen es in einem Popup; „Übernehmen“ ändert den Entwurf, gespeichert wird
-    mit der Version. Escape, „Abbrechen“ oder ein Klick daneben verwerfen.
-    „Übernehmen“ ist gesperrt, solange das Element unvollständig ist (z. B.
-    Überschrift ohne Text, Bild ohne gewähltes Bild).
+  Jeder Typ ist in `src/elements/<typ>/schema.ts` **definiert**: ein Name und
+  ein Objekt mit einem Eintrag pro **Attribut**. Der Eintrag bestimmt vollständig
+  die Darstellung im Formular, die erlaubten Werte (Zod; damit prüfen Server und
+  Popup) und den Default. Attribut-Arten (`src/elements/attributes.ts`):
+  - `line` – einzeilige Eingabe, getrimmt; `required` (Meldung „<Label> darf
+    nicht leer sein“) oder optional (leer: nicht gesetzt); `max`.
+  - `markdown` – Textarea; `max`.
+  - `select` – Auswahl aus festen Werten (`options`), `default`.
+  - `mediaRef` – Bild aus der Mediathek, Pflicht. Steht nicht in `data`, sondern
+    in `elements.media_id` (verwendete Bilder lassen sich nicht löschen);
+    höchstens eins pro Element.
+  Die gespeicherte Form ist `{ type, data, mediaId? }`; `data` enthält alle
+  Attribute außer `mediaRef`. Beispiel Überschrift: `level` (select H2/H3,
+  Default 2), `text` (line, Pflicht, höchstens 300 Zeichen).
+  Ein Element ist in einem von drei **Modi**:
+  - **Show** – wie die Website es zeigt (auch die Vorschau im Editor);
+    `<typ>/show.tsx`.
+  - **View** – wie der Editor es zeigt; `<typ>/view.tsx`; wie Show, nur Bilder
+    als Vorschau (höchstens 300 × 300 px). Der Editor legt die Steuerelemente
+    drumherum (↑ ↓, in andere Zelle, ✎, ✕) und darunter „+ Element hinzufügen“
+    mit den verfügbaren Typen.
+  - **Edit** – das Formular, für alle Typen aus den Attributen gebaut
+    (`src/elements/form.tsx`): ein Formular-Element pro Attribut, untereinander,
+    mit Label; der Fokus springt ins erste Textfeld. Hinzufügen und Bearbeiten
+    (✎ oder Doppelklick) öffnen es in einem Popup; „Übernehmen“ ändert den
+    Entwurf, gespeichert wird mit der Version. Escape, „Abbrechen“ oder ein Klick
+    daneben verwerfen. „Übernehmen“ ist gesperrt, solange das Element nicht zu
+    seiner Definition passt (z. B. Überschrift ohne Text, Bild ohne Bild).
   Eingefrorene Versionen zeigen nur View, ohne Steuerelemente.
-  Jeder Typ hat außerdem ein `schema.ts`: Daten (Zod; damit prüfen Server und
-  Popup), ob er auf ein Bild der Mediathek verweist (`media_id`), und die Daten
-  eines neuen Elements. `src/elements/schema.ts` sammelt sie; daraus leiten sich
-  die Typen für API, Server und Editor ab. Ein neuer Typ braucht also einen
-  Ordner (`schema.ts`, `show.tsx`, `view.tsx`, `edit.tsx`) und je einen Eintrag
-  in `src/elements/schema.ts`, `show.tsx` und `admin.tsx`. Verweist er auf eine
-  andere Tabelle als `media`, braucht `elements` eine neue FK-Spalte.
+  `src/elements/schema.ts` sammelt die Definitionen; daraus leiten sich die Typen
+  für API, Server und Editor ab. Ein neuer Typ braucht einen Ordner (`schema.ts`,
+  `show.tsx`, `view.tsx`) und je einen Eintrag in `src/elements/schema.ts`,
+  `show.tsx` und `admin.tsx`. Bekommt ein weiterer Typ ein `mediaRef`, muss der
+  Check `elements_media_check` (fest auf `image`) per Migration angepasst werden.
 - **Tag**: Name und Slug. Gemeinsam für Posts und Medien: an Posts als
   Metadaten pro Version, an Medien zum Ordnen der Mediathek (nicht versioniert).
 - **Medium**: Bild in R2, verwaltet über die Mediathek. Liegt in genau einem Ordner.
