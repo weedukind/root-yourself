@@ -54,7 +54,7 @@ Next.js-App. Es gibt genau eine Person, die Posts schreibt.
   höchstens eine veröffentlicht ist.
 - **Version**: ein vollständiger Stand eines Posts – Titel, Tags und der Inhalt
   als Baum von Elementen mit genau einer **Seite** (`page`) als Wurzel. Entsteht
-  beim Anlegen des Posts (Version 1, mit leerer Seite) oder durch Forken einer
+  beim Anlegen des Posts (Version 1, Seite mit leerem Inhaltsbereich) oder durch Forken einer
   bestehenden Version.
 - **Element**: Inhaltsbaustein. Typen: `heading`, `text` (Markdown), `image`
   (verweist auf die Mediathek) und die Container `list`, `slide` und `page`;
@@ -80,11 +80,13 @@ Next.js-App. Es gibt genau eine Person, die Posts schreibt.
   - **View** – wie der Editor es zeigt, wenn man eine Version bearbeitet;
     `<typ>/view.tsx`; wie Show, nur Bilder als Vorschau (höchstens 300 × 300 px,
     nie breiter als ihr Platz). Der Editor legt einen Rahmen mit „Bearbeiten“
-    drumherum; Container geben ihre Kinder über `renderChild` aus, damit auch
-    jedes Kind seinen Rahmen bekommt.
+    drumherum. Liste und Slide zeigen ihre Kinder im Show-Modus; nur die Seite
+    gibt ihren Inhaltsbereich über `renderChild` aus, damit er seinen Rahmen
+    bekommt.
   - **Edit** – das Formular, für alle Typen aus den Attributen gebaut
     (`src/elements/form.tsx`): ein Formular-Element pro Attribut, untereinander,
-    mit Label. Erscheint erst nach „Bearbeiten“, im Popup (siehe „Editor“).
+    mit Label; bei Containern darunter ihre Kinder (siehe „Editor“). Erscheint
+    erst nach „Bearbeiten“, im Popup.
   **Container-Elemente** (`container: true` in der Definition) enthalten beliebig
   viele Elemente beliebigen Typs (außer der Seite), auch weitere Container,
   beliebig tief – sinnvoll zu verschachteln liegt bei der Autorin. Die Kinder
@@ -93,21 +95,25 @@ Next.js-App. Es gibt genau eine Person, die Posts schreibt.
   innerhalb des Containers. Schutz gegen riesige Bäume (auch über die API):
   höchstens 300 Elemente pro Seite, die Seite und Verschachteltes mitgezählt
   (`MAX_PAGE_ELEMENTS`). Leere Container sind erlaubt.
-  - **Seite** (`page`, `root: true`): die Wurzel jeder Version, eine erweiterte
-    Liste mit denselben Attributen. Wird nirgends hinzugefügt und lässt sich
-    weder verschieben noch ausschneiden noch löschen.
+  - **Seite** (`page`, `root: true`): die Wurzel jeder Version, ohne eigene
+    Attribute. Ihr einziges Kind ist der **Inhaltsbereich**, eine Liste
+    (`ROOT_CONTENT_TYPE`); in ihn kommen die Elemente der Seite. Die Seite wird
+    nirgends hinzugefügt und nimmt selbst nichts auf; Seite und Inhaltsbereich
+    lassen sich weder verschieben noch ausschneiden noch löschen (`isFixed` in
+    `src/elements/tree.ts`).
   - **Liste** (`list`): Attribut `orientation` (Ausrichtung, Default
     untereinander). `vertical`: Kinder untereinander, jedes in seiner Höhe, so
     breit wie das Elternteil. `horizontal`: n Kinder je 1/n der Breite (mit
     festem Abstand dazwischen), die Reihe so hoch wie das höchste Kind; auf
     schmalen Bildschirmen (unter 768 px) untereinander. Ohne
-    Aufzählungszeichen. View wie Show (`src/elements/list/stack.tsx`).
+    Aufzählungszeichen. View wie Show (`src/elements/list/stack.tsx`), die
+    Kinder bearbeitet man im Edit-Modus.
   - **Slide** (`slide`): Container ohne eigene Attribute. Im Frontend stehen die
     Kinder nebeneinander, je 300 × 300 px (Bilder schrumpfen, damit eine
     Unterschrift Platz hat; zu viel Inhalt wird abgeschnitten). Passen sie nicht in
     die Breite, erscheinen Pfeile links und rechts; auf dem Handy auch wischen.
     Auch als Kind einer horizontalen Liste bekommt sie strikt ihren Anteil und
-    blättert darin. View wie Show.
+    blättert darin. View wie Show, die Kinder bearbeitet man im Edit-Modus.
   `src/elements/schema.ts` sammelt die Definitionen; daraus leiten sich die Typen
   für API, Server und Editor ab. Ein neuer Typ braucht einen Ordner (`schema.ts`,
   `show.tsx`, `view.tsx`) und je einen Eintrag in `src/elements/schema.ts` und
@@ -125,16 +131,18 @@ Next.js-App. Es gibt genau eine Person, die Posts schreibt.
 ```
 Header   – für alle Seiten gleich, im Code (vorerst ohne Navigation)
 Main     – der Inhalt der Version: ein Baum ab der Seite
- Seite (untereinander)
- ├─ Liste (nebeneinander)            ┌──────┬──────┬──────┐
- │   ├─ Liste: Überschrift, Text     │  1/3 │  1/3 │  1/3 │
- │   ├─ Bild                         └──────┴──────┴──────┘
- │   └─ Slide: Bild, Bild, Text …
- └─ Text
+ Seite
+ └─ Liste (Inhaltsbereich, untereinander)
+     ├─ Liste (nebeneinander)            ┌──────┬──────┬──────┐
+     │   ├─ Liste: Überschrift, Text     │  1/3 │  1/3 │  1/3 │
+     │   ├─ Bild                         └──────┴──────┴──────┘
+     │   └─ Slide: Bild, Bild, Text …
+     └─ Text
 Footer   – für alle Seiten gleich, im Code
 ```
 
-- Layout entsteht nur aus verschachtelten Listen (und der Seite) mit ihrer
+- Layout entsteht nur aus verschachtelten Listen (die oberste ist der
+  Inhaltsbereich der Seite) mit ihrer
   Ausrichtung; was früher eine Row mit drei Zellen war, ist eine horizontale
   Liste mit drei Listen darin. Zellen über mehrere Spalten oder Zeilen gibt es
   (vorerst) nicht.
@@ -157,7 +165,7 @@ Footer   – für alle Seiten gleich, im Code
 
 | Aktion | Verhalten |
 | --- | --- |
-| Post anlegen | In einer Transaktion: Post, Version 1 und ihre leere Seite (ohne Tags). |
+| Post anlegen | In einer Transaktion: Post, Version 1 und ihre Seite mit leerem Inhaltsbereich (ohne Tags). |
 | Version forken | Von jeder Version möglich (auch eingefroren). Neue Version mit nächster `number`, `parent_version_id` = Quelle, gleicher Titel. Kopiert werden `version_elements` und `version_tags` (kleine Strukturdaten) – keine Elementinhalte. |
 | Unveröffentlichtes Blatt speichern | Direkt in dieser Version, mit Überschreib-Schutz über `versions.updated_at`. |
 | Veröffentlichtes Blatt speichern | Die veröffentlichte Version bleibt unverändert. Es entsteht automatisch ein unveröffentlichter Fork, in dem die Änderungen gespeichert werden. Die Antwort enthält die neue Versions-ID; der Editor wechselt dorthin. |
@@ -190,13 +198,18 @@ Der Editor schickt den vollständigen Stand der Version:
   "title": "…",
   "tagIds": ["…"],
   "root": {
-    "id": "…", "type": "page", "data": { "orientation": "vertical" },
+    "id": "…", "type": "page", "data": {},
     "children": [
-      { "id": "…", "type": "text", "data": { "markdown": "…" } },
       {
-        "type": "list", "data": { "orientation": "horizontal" },
+        "id": "…", "type": "list", "data": { "orientation": "vertical" },
         "children": [
-          { "type": "image", "data": { "caption": "…" }, "mediaId": "…" }
+          { "id": "…", "type": "text", "data": { "markdown": "…" } },
+          {
+            "type": "list", "data": { "orientation": "horizontal" },
+            "children": [
+              { "type": "image", "data": { "caption": "…" }, "mediaId": "…" }
+            ]
+          }
         ]
       }
     ]
@@ -206,7 +219,8 @@ Der Editor schickt den vollständigen Stand der Version:
 ```
 
 Die Reihenfolge der `children` ergibt die `position`. Die Wurzel muss eine
-Seite sein, darunter gibt es keine.
+Seite sein mit genau einer Liste als Kind (dem Inhaltsbereich); darunter gibt es
+keine Seite.
 
 In einer Transaktion:
 
@@ -457,9 +471,9 @@ Anmerkungen:
   `version_elements`, nicht im Element: Elemente sind zwischen Versionen
   geteilt, ihr Platz nicht. Ein `parent_id` am Element würde jeden Fork zum
   Klonen aller Elemente zwingen.
-- Dass die Wurzel eine Seite ist und darunter keine Seite vorkommt, prüfen
-  `saveVersionInput` und `createPost`; die Datenbank sichert nur „genau eine
-  Wurzel“.
+- Dass die Wurzel eine Seite mit genau einer Liste (Inhaltsbereich) ist und
+  darunter keine Seite vorkommt, prüfen `saveVersionInput` und `createPost`
+  (beim Laden `getVersion`); die Datenbank sichert nur „genau eine Wurzel“.
 - `elements.post_id` sowie `version_elements.version_id` und
   `version_elements.post_id` sind kein fachlicher Besitz, sondern sichern über
   zusammengesetzte FKs ab, dass nichts über Versions- oder Postgrenzen hinweg
@@ -468,6 +482,9 @@ Anmerkungen:
   `version_elements_element_idx`.
 - Migration `0008_page_tree` hat Rows und Zellen durch den Baum ersetzt und
   dabei alle Posts gelöscht (Bilder, Ordner und Tags blieben).
+- Migration `0009_page_content_list` hat jeder Seite eine Liste als
+  Inhaltsbereich gegeben und ihre Kinder dorthin verschoben; die Ausrichtung
+  ging von der Seite auf die Liste über.
 
 ### `elements.data` je Typ
 
@@ -477,7 +494,7 @@ Anmerkungen:
 | `text`    | `{ "markdown": "…" }`              | –          |
 | `image`   | `{ "caption": "…" }` (optional)    | Pflicht    |
 | `list`    | `{ "orientation": "vertical" \| "horizontal" }` | – |
-| `page`    | `{ "orientation": "vertical" \| "horizontal" }` | – |
+| `page`    | `{}`                               | –          |
 | `slide`   | `{}`                               | –          |
 
 Die Kinder der Container (`list`, `page`, `slide`) stehen nicht in `data`,
@@ -748,23 +765,27 @@ einem Vorschau-Balken (Version, veröffentlicht oder nicht, Gültigkeit).
 - Versions-Editor unter `/admin/posts/[id]/versions/[vid]`:
   - Oben Titel und Tags. Darunter die **Ansicht** über die ganze Breite; auf
     Wunsch („Baum einblenden“, der Browser merkt sich die Wahl) links der **Baum
-    der Seite** zur Navigation. In der Ansicht ist der Inhaltsbereich selbst ein
-    Element, die Seite,
-    und steht im View-Modus da; jedes Element (auch die Seite) in einem Rahmen
-    mit Bezeichnung und „Bearbeiten“ (`src/app/admin/editor/page-editor.tsx`).
+    der Seite** zur Navigation. In der Ansicht stehen Seite und Inhaltsbereich
+    (eine Liste) je in einem Rahmen; die Liste im View-Modus: wie auf der
+    Website, ihre Kinder im Show-Modus, dazu „Bearbeiten“
+    (`src/app/admin/editor/page-editor.tsx`).
   - **Bearbeiten** (Knopf, Doppelklick in der Ansicht oder im Baum) öffnet den
-    Edit-Modus im Popup: das Formular des Elements, „Übernehmen“ ändert den
-    Entwurf, „Abbrechen“/Esc/Klick daneben verwerfen; gesperrt, solange das
-    Element nicht zu seiner Definition passt. Bei Containern nur ihre eigenen
-    Einstellungen (z. B. Ausrichtung); Typen ohne Einstellungen (Slide) haben
-    keinen Bearbeiten-Knopf.
-  - Ein Klick wählt ein Element; erst am gewählten erscheinen nach oben/unten,
-    ausschneiden, löschen und bei Containern „+ Element“ (Typ wählen → Popup,
-    Übernehmen fügt ans Ende ein; Typen ohne Einstellungen direkt) und
-    „Einfügen“ nach dem Ausschneiden. Die Seite lässt sich weder verschieben
-    noch ausschneiden noch löschen. Esc hebt das Ausschneiden auf.
-  - Der Baum (`src/app/admin/editor/element-tree.tsx`) bietet dieselben Aktionen
-    im Menü eines Knotens (Rechtsklick oder „⋯“); ein Klick wählt das Element und
+    Edit-Modus im Popup (`src/app/admin/editor/edit-dialog.tsx`): das Formular
+    des Elements; bei Containern (Liste, Slide) darunter ihre Kinder im
+    View-Modus, je in einem Rahmen mit „Bearbeiten“, nach oben/unten und
+    löschen, und „+ Element“ (Typ wählen → Popup; Typen ohne Einstellungen
+    direkt). „Bearbeiten“ an einem Kind öffnet dessen Edit-Modus in einem
+    weiteren Popup darüber, beliebig tief. „Übernehmen“ übernimmt das Element
+    samt Kindern in das Popup darunter bzw. den Entwurf, „Abbrechen“/Esc/Klick
+    daneben verwerfen; gesperrt, solange etwas nicht zu seiner Definition passt.
+  - Ein Klick wählt ein Element; am gewählten Inhaltsbereich erscheinen
+    zusätzlich „+ Element“ und „Einfügen“ nach dem Ausschneiden. Seite und
+    Inhaltsbereich lassen sich weder verschieben noch ausschneiden noch löschen;
+    die Seite selbst hat keine Aktionen. Esc hebt das Ausschneiden auf.
+  - Der Baum (`src/app/admin/editor/element-tree.tsx`) bietet alle Aktionen für
+    jedes Element, auch tief im Baum (bearbeiten, hinzufügen, nach oben/unten,
+    ausschneiden/einfügen, löschen), im Menü eines Knotens (Rechtsklick oder
+    „⋯“); ein Klick wählt das Element und
     scrollt die Ansicht dorthin. Unvollständige Elemente sind in Baum und Ansicht
     rot markiert; solange es welche gibt, sind Speichern und Veröffentlichen
     gesperrt.

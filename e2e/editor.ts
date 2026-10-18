@@ -6,7 +6,8 @@ import { expect, type Page } from "@playwright/test";
 export function editor(page: Page) {
   const tree = page.getByRole("navigation", { name: "Elemente" });
   const view = page.getByRole("region", { name: "Ansicht" });
-  const dialog = page.getByRole("dialog");
+  // Das oberste Popup; Popups von Kindern liegen über dem ihres Containers.
+  const dialog = page.getByRole("dialog").last();
   /** Knoten im Baum über den Anfang seiner Beschriftung, z. B. /^Liste/. */
   const node = (name: RegExp, nth = 0) => tree.getByRole("button", { name }).filter({ hasNotText: "⋯" }).nth(nth);
   return {
@@ -31,7 +32,7 @@ export function editor(page: Page) {
       if (!fill) return;
       await fill();
       await dialog.getByRole("button", { name: "Übernehmen" }).click();
-      await expect(dialog).toHaveCount(0);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
     },
     /** Reihenfolge der Knoten im Baum als Beschriftungen. */
     labels: () => tree.getByRole("button").filter({ hasNotText: "⋯" }),

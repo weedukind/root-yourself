@@ -67,8 +67,10 @@ function toInput(version: VersionDetail, patch: Partial<SaveVersionInput> = {}):
   };
 }
 
-/** Neue Kinder der Seite; die Seite selbst bleibt dieselbe. */
-const withChildren = (version: VersionDetail, children: ElementInput[]) => page(children, version.root.id);
+/** Der Inhaltsbereich der Seite, eine Liste. */
+const content = (version: VersionDetail) => version.root.children[0];
+/** Neue Elemente im Inhaltsbereich; Seite und Inhaltsbereich bleiben dieselben. */
+const withChildren = (version: VersionDetail, children: ElementInput[]) => page(children, version.root.id, content(version).id);
 
 async function save(db: Db, postId: string, versionId: string, input: SaveVersionInput) {
   const result = await saveVersion(db, storage, postId, versionId, input);
@@ -88,7 +90,7 @@ async function furnished(db: Db) {
 const tree = (version: VersionDetail) => {
   const shape = (items: ElementView[]): unknown[] =>
     items.map((e) => (e.type === "text" ? e.data.markdown : "children" in e ? shape(e.children) : e.type));
-  return shape(version.root.children);
+  return shape(content(version).children);
 };
 /** IDs der Texte in Lesereihenfolge. */
 const textIds = (version: VersionDetail) =>
@@ -99,11 +101,11 @@ const elementCount = async (db: Db, postId: string) =>
   (await db.select({ id: elements.id }).from(elements).where(eq(elements.postId, postId))).length;
 
 describe("createPost", () => {
-  it("Version 1 hat eine leere Seite als Wurzel", () =>
+  it("Version 1 hat eine Seite mit leerem Inhaltsbereich als Wurzel", () =>
     withRollback(async (db) => {
       const post = await newPost(db);
       const v1 = await load(db, post.id, post.versions[0].id);
-      expect(v1.root).toMatchObject({ type: "page", data: { orientation: "vertical" }, children: [] });
+      expect(v1.root).toMatchObject({ type: "page", data: {}, children: [{ type: "list", data: { orientation: "vertical" }, children: [] }] });
     }));
 });
 
@@ -127,7 +129,7 @@ describe("saveVersion – unveröffentlichtes Blatt", () => {
       expect(forkedFrom).toBeNull();
       expect(version).toMatchObject({ id: v1.id, title: "Neuer Titel", tags: [{ name: "Baum" }] });
       expect(tree(version)).toEqual([["A", ["B"]], "C"]);
-      expect(version.root.children[0]).toMatchObject({ type: "list", data: { orientation: "horizontal" } });
+      expect(content(version).children[0]).toMatchObject({ type: "list", data: { orientation: "horizontal" } });
       expect(version.root.id).toBe(v1.root.id);
       expect(version.updatedAt).not.toBe(v1.updatedAt);
       expect(await load(db, post.id, v1.id)).toEqual(version);
@@ -138,14 +140,14 @@ describe("saveVersion – unveröffentlichtes Blatt", () => {
       const { post, v1 } = await furnished(db);
       const { version } = await save(db, post.id, v1.id, toInput(v1));
       expect(textIds(version)).toEqual(textIds(v1));
-      expect(await elementCount(db, post.id)).toBe(5); // Seite, Liste, drei Texte
+      expect(await elementCount(db, post.id)).toBe(6); // Seite, Inhaltsbereich, Liste, drei Texte
     }));
 
   it("ändert nicht geteilte Elemente direkt – die ID bleibt; auch ein Typwechsel", () =>
     withRollback(async (db) => {
       const { post, v1 } = await furnished(db);
       const [one, two, three] = textIds(v1);
-      const listId = v1.root.children[0].id;
+      const listId = content(v1).children[0].id;
       const { version } = await save(
         db,
         post.id,
@@ -159,15 +161,15 @@ describe("saveVersion – unveröffentlichtes Blatt", () => {
       );
       expect(textIds(version)).toEqual([one, two]);
       expect(tree(version)).toEqual([["Eins!", "Zwei"], "heading"]);
-      expect(version.root.children[1]).toEqual({ id: three, type: "heading", data: { level: 2, text: "Drei" } });
-      expect(await elementCount(db, post.id)).toBe(5);
+      expect(content(version).children[1]).toEqual({ id: three, type: "heading", data: { level: 2, text: "Drei" } });
+      expect(await elementCount(db, post.id)).toBe(6);
     }));
 
   it("Umsortieren und Verschieben zwischen Containern erzeugen keine neuen Elemente", () =>
     withRollback(async (db) => {
       const { post, v1 } = await furnished(db);
       const [one, two, three] = textIds(v1);
-      const listId = v1.root.children[0].id;
+      const listId = content(v1).children[0].id;
       const { version } = await save(
         db,
         post.id,
@@ -176,7 +178,7 @@ describe("saveVersion – unveröffentlichtes Blatt", () => {
       );
       expect(tree(version)).toEqual(["Drei", ["Eins"], "Zwei"]);
       expect(textIds(version)).toEqual([three, one, two]);
-      expect(await elementCount(db, post.id)).toBe(5);
+      expect(await elementCount(db, post.id)).toBe(6);
     }));
 
   it("entfernte, nicht geteilte Elemente werden aufgeräumt – ein Container samt Kindern", () =>
@@ -184,7 +186,7 @@ describe("saveVersion – unveröffentlichtes Blatt", () => {
       const { post, v1 } = await furnished(db);
       const three = textIds(v1)[2];
       await save(db, post.id, v1.id, toInput(v1, { root: withChildren(v1, [text("Drei", three)]) }));
-      expect(await elementCount(db, post.id)).toBe(2); // Seite und „Drei“
+      expect(await elementCount(db, post.id)).toBe(3); // Seite, Inhaltsbereich und „Drei“
     }));
 
   it("liefert Bild-Elemente mit ihrem Medium", () =>
@@ -198,7 +200,7 @@ describe("saveVersion – unveröffentlichtes Blatt", () => {
       const { version } = await save(db, post.id, v1.id, toInput(v1, {
         root: withChildren(v1, [list([{ type: "image", data: { caption: "Unterschrift" }, mediaId: image.id }])]),
       }));
-      const [container] = version.root.children;
+      const [container] = content(version).children;
       expect("children" in container && container.children[0]).toMatchObject({
         type: "image",
         data: { caption: "Unterschrift" },
@@ -215,7 +217,7 @@ describe("saveVersion – geteilte Elemente (Copy-on-Write)", () => {
       if (!forked.ok) throw new Error(forked.error.message);
       const v2 = await load(db, post.id, forked.value.id);
       const [one, two, three] = textIds(v2);
-      const listId = v2.root.children[0].id;
+      const listId = content(v2).children[0].id;
 
       const { version } = await save(
         db,
@@ -227,9 +229,9 @@ describe("saveVersion – geteilte Elemente (Copy-on-Write)", () => {
       expect(newOne).not.toBe(one);
       expect([sharedTwo, sharedThree]).toEqual([two, three]);
       expect(version.root.id).toBe(v1.root.id);
-      expect(version.root.children[0].id).toBe(listId);
+      expect(content(version).children[0].id).toBe(listId);
       expect(tree(await load(db, post.id, v1.id))).toEqual([["Eins", "Zwei"], "Drei"]);
-      expect(await elementCount(db, post.id)).toBe(6);
+      expect(await elementCount(db, post.id)).toBe(7);
 
       // Der Klon gehört nur v2 – eine weitere Änderung geht direkt in ihn.
       const again = await save(db, post.id, v2.id, toInput(version, { root: withChildren(version, [text("Eins, zweite Änderung", newOne)]) }));
@@ -243,7 +245,7 @@ describe("saveVersion – geteilte Elemente (Copy-on-Write)", () => {
       if (!forked.ok) throw new Error(forked.error.message);
       const v2 = await load(db, post.id, forked.value.id);
       await save(db, post.id, v2.id, toInput(v2, { root: withChildren(v2, []) }));
-      expect(await elementCount(db, post.id)).toBe(5);
+      expect(await elementCount(db, post.id)).toBe(6);
       expect(tree(await load(db, post.id, v1.id))).toEqual([["Eins", "Zwei"], "Drei"]);
     }));
 });
@@ -255,7 +257,7 @@ describe("saveVersion – veröffentlichte und eingefrorene Versionen", () => {
       await publishVersion(db, post.id, v1.id);
       const published = await load(db, post.id, v1.id);
       const [one, two, three] = textIds(published);
-      const listId = published.root.children[0].id;
+      const listId = content(published).children[0].id;
 
       const { version, forkedFrom } = await save(
         db,
@@ -341,16 +343,20 @@ describe("saveVersionInput", () => {
   const base = { title: "T", tagIds: [], updatedAt: new Date().toISOString() };
   const many = (n: number) => Array.from({ length: n }, () => text("x"));
 
-  it("die Wurzel ist eine Seite; darunter gibt es keine Seite", () => {
+  it("die Wurzel ist eine Seite mit genau einer Liste; darunter gibt es keine Seite", () => {
     expect(saveVersionInput.safeParse({ ...base, root: list([]) }).success).toBe(false);
+    const bare = { type: "page", data: {} };
+    expect(saveVersionInput.safeParse({ ...base, root: { ...bare, children: [] } }).success).toBe(false);
+    expect(saveVersionInput.safeParse({ ...base, root: { ...bare, children: [text("x")] } }).success).toBe(false);
+    expect(saveVersionInput.safeParse({ ...base, root: { ...bare, children: [list([]), list([])] } }).success).toBe(false);
     expect(saveVersionInput.safeParse({ ...base, root: page([page([]) as unknown as ElementInput]) }).success).toBe(false);
     expect(saveVersionInput.safeParse({ ...base, root: page([list([slide([text("tief")])])]) }).success).toBe(true);
   });
 
   it(`höchstens ${MAX_PAGE_ELEMENTS} Elemente pro Seite, Verschachteltes mitgezählt`, () => {
-    // Seite + Liste + 298 Texte = 300: erlaubt; ein Text mehr: zu viel.
-    expect(saveVersionInput.safeParse({ ...base, root: page([list(many(MAX_PAGE_ELEMENTS - 2))]) }).success).toBe(true);
-    const tooMany = saveVersionInput.safeParse({ ...base, root: page([list(many(MAX_PAGE_ELEMENTS - 1))]) });
+    // Seite + Inhaltsbereich + Liste + 297 Texte = 300: erlaubt; ein Text mehr: zu viel.
+    expect(saveVersionInput.safeParse({ ...base, root: page([list(many(MAX_PAGE_ELEMENTS - 3))]) }).success).toBe(true);
+    const tooMany = saveVersionInput.safeParse({ ...base, root: page([list(many(MAX_PAGE_ELEMENTS - 2))]) });
     expect(tooMany.error?.issues[0].message).toBe(`Höchstens ${MAX_PAGE_ELEMENTS} Elemente pro Seite`);
   });
 

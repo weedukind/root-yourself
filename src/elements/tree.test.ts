@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ElementCandidate } from "./schema";
-import { appendChild, canMoveInto, moveInto, moveWithin, nodeAt, removeAt, summary, updateAt } from "./tree";
+import { type ElementCandidate, newElement } from "./schema";
+import { appendChild, canMoveInto, isFixed, moveInto, moveWithin, nodeAt, removeAt, summary, updateAt } from "./tree";
 
 const text = (markdown: string): ElementCandidate => ({ key: markdown, type: "text", data: { markdown } });
 const slide = (key: string, children: ElementCandidate[]): ElementCandidate => ({ key, type: "slide", data: {}, children });
@@ -54,6 +54,16 @@ describe("Baum eines Containers", () => {
     const out = moveInto(root, [1, 0], []);
     expect(keys(out.root)).toEqual(["S", ["A", ["T", ["C"]], "D", "B"]]);
     expect(out.path).toEqual([3]);
+  });
+
+  it("Seite: Inhaltsbereich steht fest, Elemente kommen in ihn", () => {
+    const page = appendChild(newElement("page", "P"), [0], text("A"));
+    expect(nodeAt(page, [0])).toMatchObject({ key: "P.content", type: "list" });
+    expect([isFixed(page, []), isFixed(page, [0]), isFixed(page, [0, 0])]).toEqual([true, true, false]);
+    expect(appendChild(page, [], text("B"))).toBe(page);
+    expect(removeAt(page, [0])).toBe(page);
+    expect(canMoveInto(page, [0], [])).toBe(false);
+    expect(canMoveInto(page, [0, 0], [])).toBe(false);
   });
 
   it("summary beschreibt Elemente kurz", () => {

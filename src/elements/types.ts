@@ -9,8 +9,11 @@ import type { ContentOf, ElementContent, ElementType } from "./schema";
 
 export type ShowProps<T extends ElementType> = { element: ContentOf<T> };
 
-/** Rendert ein Kind eines Containers in der View – damit legt der Editor Rahmen und Knöpfe um jedes Kind. */
+/** Rendert ein Kind in der View – damit legt der Editor Rahmen und Knöpfe um den Inhaltsbereich der Seite. */
 export type RenderChild = (child: ElementContent, index: number) => React.ReactNode;
 
-/** View: wie Show; Container geben ihre Kinder über renderChild aus, falls angegeben. */
+/**
+ * View: wie Show; Liste und Slide zeigen ihre Kinder im Show-Modus (bearbeitet werden sie in
+ * ihrem Edit-Modus). Nur die Seite gibt ihr Kind über renderChild aus, falls angegeben.
+ */
 export type ViewProps<T extends ElementType> = ShowProps<T> & { renderChild?: RenderChild };

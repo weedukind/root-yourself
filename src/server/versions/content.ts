@@ -1,11 +1,12 @@
 import { and, asc, countDistinct, eq, inArray, max, sql } from "drizzle-orm";
 import { elements, media, tags, versionElements, versions, versionTags } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { childrenOf, ELEMENT_SCHEMAS, isContainer, isElementType } from "@/elements/schema";
+import { childrenOf, ELEMENT_SCHEMAS, isContainer, isElementType, ROOT_CONTENT_TYPE } from "@/elements/schema";
 import { byName } from "@/lib/sort";
 import type {
   ElementInput,
   ElementView,
+  PageView,
   SaveVersionInput,
   SaveVersionResult,
   VersionDetail,
@@ -73,8 +74,10 @@ export async function getVersion(
   }
   const rootLink = links.find((l) => !l.link.parentElementId);
   const root = rootLink && views.get(rootLink.link.elementId);
-  // Jede Version hat eine Seite als Wurzel (createPost, saveVersion, forkVersion).
-  if (root?.type !== "page") throw new Error(`Version ${versionId} hat keine Seite als Wurzel`);
+  // Jede Version hat eine Seite mit ihrem Inhaltsbereich als Wurzel (createPost, saveVersion, forkVersion).
+  if (root?.type !== "page" || root.children.length !== 1 || root.children[0].type !== ROOT_CONTENT_TYPE) {
+    throw new Error(`Version ${versionId} hat keine Seite mit Inhaltsbereich als Wurzel`);
+  }
 
   const published = post.value.publishedVersion;
   return ok({
@@ -84,7 +87,7 @@ export async function getVersion(
     postPublishedVersion: published && { id: published.id, number: published.number },
     postFirstPublishedAt: post.value.firstPublishedAt,
     tags: tagRows.sort(byName),
-    root,
+    root: root as PageView,
   });
 }
 

@@ -35,7 +35,7 @@ describe("findPublishedPost", () => {
       const result = await findPublishedPost(db, storage, "wurzeln");
       expect(result).toMatchObject({ kind: "post", post: { slug: "wurzeln", title: "Wurzeln", tags: [] } });
       if (result.kind === "post") {
-        expect(result.post.root.children[0]).toMatchObject({ type: "text", data: { markdown: "Hallo" } });
+        expect(result.post.root.children[0].children[0]).toMatchObject({ type: "text", data: { markdown: "Hallo" } });
         expect(result.post.firstPublishedAt).toBeTruthy();
       }
     }));

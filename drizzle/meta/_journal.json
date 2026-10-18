@@ -64,6 +64,13 @@
       "when": 1792275111202,
       "tag": "0008_page_tree",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792318196662,
+      "tag": "0009_page_content_list",
+      "breakpoints": true
     }
   ]
 }

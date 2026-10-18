@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { childrenOf, type ElementCandidate, elementLabel, pathKey, type TreePath } from "@/elements/schema";
 import { summary } from "@/elements/tree";
 import { useDismiss } from "../use-dismiss";
@@ -50,9 +51,11 @@ export function ElementTree({
           onSelect={onSelect}
           onEdit={readOnly ? undefined : onEdit}
           onMenu={readOnly ? undefined : (path, x, y) => setMenu({ path, x, y })}
+          hasMenu={(path) => actionsFor(path).length > 0}
         />
       </ul>
-      {menu && <NodeMenu x={menu.x} y={menu.y} items={actionsFor(menu.path)} onClose={closeMenu} />}
+      {/* In body: Im Baum (sticky, eigene Stapelebene) läge es sonst unter der Leiste mit „Speichern“. */}
+      {menu && createPortal(<NodeMenu x={menu.x} y={menu.y} items={actionsFor(menu.path)} onClose={closeMenu} />, document.body)}
     </div>
   );
 }
@@ -66,6 +69,7 @@ function TreeNode({
   onSelect,
   onEdit,
   onMenu,
+  hasMenu,
 }: {
   node: ElementCandidate;
   path: TreePath;
@@ -76,21 +80,24 @@ function TreeNode({
   onEdit?: (path: TreePath) => void;
   /** Fehlt bei eingefrorenen Versionen: dann kein Menü. */
   onMenu?: (path: TreePath, x: number, y: number) => void;
+  /** Ob es am Element überhaupt Aktionen gibt (die Seite hat keine). */
+  hasMenu: (path: TreePath) => boolean;
 }) {
   const key = pathKey(path);
   const active = selected !== null && key === pathKey(selected);
   const menuButton = useRef<HTMLButtonElement>(null);
   const children = childrenOf(node);
   const text = summary(node);
+  const openMenu = hasMenu(path) ? onMenu : undefined;
 
   return (
     <li>
       <div
         className={`group flex items-center rounded ${active ? "bg-zinc-200" : "hover:bg-zinc-100"} ${cut && pathKey(cut) === key ? "opacity-50" : ""}`}
         onContextMenu={(e) => {
-          if (!onMenu) return;
+          if (!openMenu) return;
           e.preventDefault();
-          onMenu(path, e.clientX, e.clientY);
+          openMenu(path, e.clientX, e.clientY);
         }}
       >
         <button
@@ -108,7 +115,7 @@ function TreeNode({
           <span className="shrink-0 font-medium">{elementLabel(node.type)}</span>
           {text && <span className="min-w-0 truncate text-zinc-500">{text}</span>}
         </button>
-        {onMenu && (
+        {openMenu && (
           <button
             ref={menuButton}
             type="button"
@@ -117,7 +124,7 @@ function TreeNode({
             className="rounded px-1 text-zinc-500 opacity-0 group-hover:opacity-100 hover:bg-zinc-300 hover:text-zinc-900 focus:opacity-100"
             onClick={() => {
               const rect = menuButton.current!.getBoundingClientRect();
-              onMenu(path, rect.left, rect.bottom);
+              openMenu(path, rect.left, rect.bottom);
             }}
           >
             ⋯
@@ -137,6 +144,7 @@ function TreeNode({
               onSelect={onSelect}
               onEdit={onEdit}
               onMenu={onMenu}
+              hasMenu={hasMenu}
             />
           ))}
         </ul>

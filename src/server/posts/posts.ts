@@ -1,7 +1,7 @@
 import { desc, eq, inArray, sql } from "drizzle-orm";
 import { elements, posts, postSlugRedirects, versionElements, versions } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { ELEMENT_SCHEMAS } from "@/elements/schema";
+import { ELEMENT_SCHEMAS, ROOT_CONTENT_TYPE } from "@/elements/schema";
 import { isValidSlug, slugify } from "@/lib/slug";
 import { compareGerman } from "@/lib/sort";
 import type {
@@ -98,7 +98,7 @@ export async function getPost(db: Db, id: string): Promise<Result<PostDetail>> {
   return ok({ ...summary, versions: versionList, redirectSlugs: redirects.map((r) => r.slug) });
 }
 
-/** Legt einen Post mit Version 1 an: eine leere Seite als Wurzel, ohne Tags. */
+/** Legt einen Post mit Version 1 an: eine Seite mit leerem Inhaltsbereich als Wurzel, ohne Tags. */
 export async function createPost(db: Db, input: CreatePostInput): Promise<Result<PostDetail>> {
   const slug = input.slug ?? slugify(input.title);
   if (!slug) return invalid("slug_empty", "Aus dem Titel lässt sich kein Slug bilden", "title");
@@ -119,7 +119,14 @@ export async function createPost(db: Db, input: CreatePostInput): Promise<Result
         .insert(elements)
         .values({ postId: post.id, type: "page", data: ELEMENT_SCHEMAS.page.empty() })
         .returning({ id: elements.id });
+      const [content] = await tx
+        .insert(elements)
+        .values({ postId: post.id, type: ROOT_CONTENT_TYPE, data: ELEMENT_SCHEMAS[ROOT_CONTENT_TYPE].empty() })
+        .returning({ id: elements.id });
       await tx.insert(versionElements).values({ versionId: version.id, postId: post.id, elementId: page.id, position: 0 });
+      await tx
+        .insert(versionElements)
+        .values({ versionId: version.id, postId: post.id, elementId: content.id, parentElementId: page.id, position: 0 });
       return post.id;
     });
   } catch (error) {

@@ -23,7 +23,7 @@ const version: VersionDetail = {
   root: {
     id: "p",
     type: "page",
-    data: { orientation: "vertical" },
+    data: {},
     children: [
       {
         id: "l",
@@ -53,7 +53,7 @@ describe("fromVersion / toInput", () => {
       root: {
         id: "p",
         type: "page",
-        data: { orientation: "vertical" },
+        data: {},
         children: [
           {
             id: "l",
@@ -71,8 +71,8 @@ describe("fromVersion / toInput", () => {
 
   it("neue Elemente haben keine id", () => {
     const draft = fromVersion(version);
-    const root = appendChild(draft.root, [], createElement("heading"));
-    expect(toInput({ ...draft, root }, "").root.children[1]).toEqual({ id: undefined, type: "heading", data: { level: 2, text: "" } });
+    const root = appendChild(draft.root, [0], createElement("heading"));
+    expect(toInput({ ...draft, root }, "").root.children[0].children[2]).toEqual({ id: undefined, type: "heading", data: { level: 2, text: "" } });
   });
 
   it("fingerprint erkennt Änderungen, nicht aber neue React-Keys", () => {

@@ -25,9 +25,11 @@ async function fork(db: Db, post: PostDetail, versionId: string) {
   return result.value;
 }
 
-/** Gibt der Seite einer Version einen Text und eine Liste mit einem Text darin, dazu einen Tag. */
+/** Gibt dem Inhaltsbereich einer Version einen Text und eine Liste mit einem Text darin, dazu einen Tag. */
 async function furnish(db: Db, postId: string, versionId: string) {
-  const [root] = await db.select().from(versionElements).where(eq(versionElements.versionId, versionId));
+  const links = await db.select().from(versionElements).where(eq(versionElements.versionId, versionId));
+  const root = links.find((l) => l.parentElementId === null)!;
+  const content = links.find((l) => l.parentElementId === root.elementId)!;
   const [e1, list, e2] = await db
     .insert(elements)
     .values([
@@ -38,13 +40,13 @@ async function furnish(db: Db, postId: string, versionId: string) {
     .returning();
   const link = { versionId, postId };
   await db.insert(versionElements).values([
-    { ...link, elementId: e1.id, parentElementId: root.elementId, position: 0 },
-    { ...link, elementId: list.id, parentElementId: root.elementId, position: 1 },
+    { ...link, elementId: e1.id, parentElementId: content.elementId, position: 0 },
+    { ...link, elementId: list.id, parentElementId: content.elementId, position: 1 },
     { ...link, elementId: e2.id, parentElementId: list.id, position: 0 },
   ]);
   const [tag] = await db.insert(tags).values({ name: "Baum", slug: "baum" }).returning();
   await db.insert(versionTags).values({ versionId, tagId: tag.id });
-  return { rootId: root.elementId, elementIds: [root.elementId, e1.id, list.id, e2.id], tagId: tag.id };
+  return { contentId: content.elementId, elementIds: [root.elementId, content.elementId, e1.id, list.id, e2.id], tagId: tag.id };
 }
 
 /** Baum einer Version als [Element, Elternteil, Position], sortiert. */
@@ -65,8 +67,8 @@ describe("forkVersion", () => {
 
       const [original, copy] = [await treeOf(db, v1.id), await treeOf(db, v2.id)];
       expect(copy).toEqual(original);
-      expect(copy).toHaveLength(4);
-      // Keine neuen Elemente: dieselben IDs in beiden Versionen (Seite, Text, Liste, Text).
+      expect(copy).toHaveLength(5);
+      // Keine neuen Elemente: dieselben IDs in beiden Versionen (Seite, Inhaltsbereich, Text, Liste, Text).
       expect(await db.select().from(elements).where(eq(elements.postId, post.id))).toHaveLength(elementIds.length);
       expect(await db.select().from(versionTags).where(eq(versionTags.versionId, v2.id))).toEqual([
         { versionId: v2.id, tagId },
@@ -144,14 +146,14 @@ describe("deleteVersion", () => {
     withRollback(async (db) => {
       const post = await newPost(db);
       const v1 = post.versions[0];
-      const { rootId, elementIds } = await furnish(db, post.id, v1.id);
+      const { contentId, elementIds } = await furnish(db, post.id, v1.id);
       const v2 = await fork(db, post, v1.id);
 
       // v2 bekommt ein eigenes Element zusätzlich zu den geteilten.
       const [own] = await db.insert(elements).values({ postId: post.id, type: "text", data: { markdown: "Nur v2" } }).returning();
       await db
         .insert(versionElements)
-        .values({ versionId: v2.id, postId: post.id, elementId: own.id, parentElementId: rootId, position: 2 });
+        .values({ versionId: v2.id, postId: post.id, elementId: own.id, parentElementId: contentId, position: 2 });
 
       expect(await deleteVersion(db, post.id, v2.id)).toEqual({ ok: true, value: null });
       const remaining = await db.select({ id: elements.id }).from(elements).where(eq(elements.postId, post.id));

@@ -1,4 +1,4 @@
-import { childrenOf, type ElementCandidate, isContainer, type TreePath } from "./schema";
+import { childrenOf, type ElementCandidate, isRoot, takesChildren, type TreePath } from "./schema";
 
 // Bearbeitung des Baums eines Container-Elements im Popup: Die Wurzel ist der Container, die
 // Zweige sind seine Kinder (TreePath: Indizes, [] ist die Wurzel). Alle Funktionen sind rein und
@@ -14,6 +14,13 @@ export function nodeAt(root: Node, path: TreePath): Node | undefined {
 
 const withChildren = (node: Node, children: Node[]): Node => ({ ...node, children }) as Node;
 
+/** Ob das Element fest steht: die Wurzel und ihr Inhaltsbereich lassen sich nicht verschieben oder löschen. */
+export function isFixed(root: Node, path: TreePath): boolean {
+  if (path.length === 0) return true;
+  const parent = nodeAt(root, path.slice(0, -1));
+  return parent !== undefined && isRoot(parent.type);
+}
+
 /** Ersetzt den Knoten am Pfad durch change(knoten). */
 export function updateAt(root: Node, path: TreePath, change: (node: Node) => Node): Node {
   if (path.length === 0) return change(root);
@@ -26,12 +33,12 @@ export function updateAt(root: Node, path: TreePath, change: (node: Node) => Nod
 /** Hängt ein Kind ans Ende eines Containers. */
 export function appendChild(root: Node, containerPath: TreePath, child: Node): Node {
   const container = nodeAt(root, containerPath);
-  if (!container || !isContainer(container.type)) return root;
+  if (!container || !takesChildren(container.type)) return root;
   return updateAt(root, containerPath, (node) => withChildren(node, [...childrenOf(node), child]));
 }
 
 export function removeAt(root: Node, path: TreePath): Node {
-  if (path.length === 0) return root;
+  if (isFixed(root, path)) return root;
   const parent = path.slice(0, -1);
   const index = path[path.length - 1];
   return updateAt(root, parent, (node) => withChildren(node, childrenOf(node).filter((_, i) => i !== index)));
@@ -39,7 +46,7 @@ export function removeAt(root: Node, path: TreePath): Node {
 
 /** Verschiebt ein Kind innerhalb seines Containers um delta Plätze. */
 export function moveWithin(root: Node, path: TreePath, delta: number): Node {
-  if (path.length === 0) return root;
+  if (isFixed(root, path)) return root;
   const index = path[path.length - 1];
   const target = index + delta;
   return updateAt(root, path.slice(0, -1), (node) => {
@@ -54,7 +61,7 @@ export function moveWithin(root: Node, path: TreePath, delta: number): Node {
 /** Ob from in den Container to verschoben werden kann: nicht in sich selbst oder einen eigenen Nachfahren. */
 export function canMoveInto(root: Node, from: TreePath, to: TreePath): boolean {
   const container = nodeAt(root, to);
-  if (from.length === 0 || !nodeAt(root, from) || !container || !isContainer(container.type)) return false;
+  if (isFixed(root, from) || !nodeAt(root, from) || !container || !takesChildren(container.type)) return false;
   return !(to.length >= from.length && from.every((index, i) => to[i] === index));
 }
 

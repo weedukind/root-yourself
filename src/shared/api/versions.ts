@@ -7,6 +7,7 @@ import {
   flattenElements,
   type MediaRef,
   pageInput,
+  type RootOf,
 } from "@/elements/schema";
 import { postTitle, type VersionSummary } from "./posts";
 import type { TagRef } from "./tags";
@@ -21,8 +22,8 @@ export const MAX_PAGE_ELEMENTS = 300;
 export { elementInput, pageInput };
 export type { ElementInput, ElementType, ElementView, MediaRef };
 
-export type PageView = Extract<ElementView, { type: "page" }>;
-export type PageInput = Extract<ElementInput, { type: "page" }>;
+export type PageView = RootOf<ElementView>;
+export type PageInput = RootOf<ElementInput>;
 
 export const saveVersionInput = z
   .object({

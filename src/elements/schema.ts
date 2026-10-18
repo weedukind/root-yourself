@@ -28,6 +28,10 @@ export const isElementType = (type: string): type is ElementType => Object.hasOw
 export const isContainer = (type: ElementType) => ELEMENT_SCHEMAS[type].container;
 /** Die Wurzel einer Version (Page): steht nur ganz oben. */
 export const isRoot = (type: ElementType) => ELEMENT_SCHEMAS[type].root;
+/** Container, in die man Elemente einfügen kann; die Wurzel hat nur ihren Inhaltsbereich. */
+export const takesChildren = (type: ElementType) => isContainer(type) && !isRoot(type);
+/** Typ des Inhaltsbereichs, des einzigen Kinds der Wurzel. */
+export const ROOT_CONTENT_TYPE = "list" satisfies ElementType;
 /** Typen, die man in einen Container einfügen kann (alle außer der Wurzel). */
 export const ADDABLE_TYPES = ELEMENT_TYPES.filter((type) => !isRoot(type));
 
@@ -87,14 +91,16 @@ export function flattenElements<E extends { type: ElementType }>(list: E[]): E[]
 }
 
 function inputSchema(type: ElementType): z.ZodType {
-  const { data, media, container } = ELEMENT_SCHEMAS[type];
+  const { data, media, container, root } = ELEMENT_SCHEMAS[type];
+  // Rekursiv: Kinder beliebigen Typs außer der Wurzel. Die Menge begrenzt saveVersionInput.
+  // Die Wurzel hat genau ein Kind, ihren Inhaltsbereich.
+  const children = root ? z.tuple([z.lazy(() => inputSchema(ROOT_CONTENT_TYPE))]) : z.array(z.lazy(() => elementInput));
   return z.object({
     id: z.uuid().optional(),
     type: z.literal(type),
     data,
     ...(media ? { mediaId: z.uuid() } : {}),
-    // Rekursiv: Kinder beliebigen Typs außer der Wurzel. Die Menge begrenzt saveVersionInput.
-    ...(container ? { children: z.array(z.lazy(() => elementInput)) } : {}),
+    ...(container ? { children } : {}),
   });
 }
 
@@ -103,11 +109,22 @@ export const elementInput: z.ZodType<ElementInput> = z.lazy(() =>
   z.discriminatedUnion("type", ADDABLE_TYPES.map(inputSchema) as [z.ZodObject, ...z.ZodObject[]]),
 ) as unknown as z.ZodType<ElementInput>;
 
-/** Die Wurzel einer Version: eine Page mit ihren Kindern. */
-export const pageInput = inputSchema("page") as unknown as z.ZodType<Extract<ElementInput, { type: "page" }>>;
+/** Die Wurzel (Page) in der jeweiligen Form, mit ihrem einzigen Kind, dem Inhaltsbereich. */
+export type RootOf<E extends { type: ElementType }> = Omit<Extract<E, { type: "page" }>, "children"> & {
+  children: [Extract<E, { type: typeof ROOT_CONTENT_TYPE }>];
+};
 
-export const newElement = (type: ElementType, key: string) =>
-  ({ key, type, data: ELEMENT_SCHEMAS[type].empty(), ...(isContainer(type) ? { children: [] } : {}) }) as ElementCandidate;
+/** Die Wurzel einer Version: eine Page mit ihrem Inhaltsbereich. */
+export const pageInput = inputSchema("page") as unknown as z.ZodType<RootOf<ElementInput>>;
+
+/** Leeres Element; eine neue Wurzel bekommt gleich ihren leeren Inhaltsbereich (Key: key + ".content"). */
+export const newElement = (type: ElementType, key: string): ElementCandidate =>
+  ({
+    key,
+    type,
+    data: ELEMENT_SCHEMAS[type].empty(),
+    ...(isContainer(type) ? { children: isRoot(type) ? [newElement(ROOT_CONTENT_TYPE, `${key}.content`)] : [] } : {}),
+  }) as ElementCandidate;
 
 /** Pfad eines Elements im Baum eines Containers: Indizes der Kinder, [] ist die Wurzel. */
 export type TreePath = number[];

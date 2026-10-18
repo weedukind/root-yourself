@@ -8,9 +8,10 @@ test("Liste: untereinander oder nebeneinander, auf dem Handy untereinander", asy
   await e.showTree();
   const text = (value: string) => () => e.dialog.getByRole("textbox", { name: "Text (Markdown)" }).fill(value);
 
-  await e.add(/^Seite/, "Liste", () => e.dialog.getByLabel("Ausrichtung").selectOption("horizontal"));
-  for (const name of ["Links", "Mitte", "Rechts"]) await e.add(/^Liste/, "Text", text(name));
-  await e.add(/^Seite/, "Text", text("Darunter"));
+  // Die erste Liste ist der Inhaltsbereich der Seite, die zweite die neue.
+  await e.add(/^Liste/, "Liste", () => e.dialog.getByLabel("Ausrichtung").selectOption("horizontal"));
+  for (const name of ["Links", "Mitte", "Rechts"]) await e.add(/^Liste/, "Text", text(name), 1);
+  await e.add(/^Liste/, "Text", text("Darunter"));
   await e.save();
 
   const saved = await (await page.request.get(`/api/admin/posts/${post.id}/versions/${post.versionId}`)).json();

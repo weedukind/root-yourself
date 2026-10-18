@@ -1,13 +1,7 @@
 import { ShowElement } from "../components";
-import { Stack } from "../list/stack";
 import type { ShowProps } from "../types";
 
+// Die Seite zeigt ihren Inhaltsbereich, die Liste.
 export function PageShow({ element }: ShowProps<"page">) {
-  return (
-    <Stack orientation={element.data.orientation}>
-      {element.children.map((child, i) => (
-        <ShowElement key={i} element={child} />
-      ))}
-    </Stack>
-  );
+  return element.children.map((child, i) => <ShowElement key={i} element={child} />);
 }

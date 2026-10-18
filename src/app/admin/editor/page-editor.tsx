@@ -1,35 +1,33 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { ViewElement } from "@/elements/components";
-import { ElementForm } from "@/elements/form";
 import {
   ADDABLE_TYPES,
   childrenOf,
-  completeElement,
   type DraftElement,
   type ElementCandidate,
   type ElementContent,
-  ELEMENT_SCHEMAS,
   elementLabel,
   type ElementType,
-  isContainer,
   pathKey,
+  takesChildren,
   type TreePath,
 } from "@/elements/schema";
-import { appendChild, canMoveInto, moveInto, moveWithin, nodeAt, removeAt, updateAt } from "@/elements/tree";
-import { Modal } from "../modal";
-import { primaryButton, secondaryButton, smallButton } from "../ui";
-import { useDismiss } from "../use-dismiss";
+import { appendChild, canMoveInto, isFixed, moveInto, moveWithin, nodeAt, removeAt, updateAt } from "@/elements/tree";
+import { smallButton } from "../ui";
 import { createElement, toView } from "./draft";
+import { AddMenu, EditDialog, hasAttributes, hasEditMode } from "./edit-dialog";
 import { type ElementAction, ElementTree } from "./element-tree";
 
-// Inhalt einer Version bearbeiten. Der Inhaltsbereich ist selbst ein Element, die Seite; rechts
-// steht sie im View-Modus, jedes Element (auch die Seite) in einem Rahmen mit „Bearbeiten“. Am
-// gewählten Element (Klick) zusätzlich: nach oben/unten, ausschneiden, löschen; Container
-// „+ Element“ und „Einfügen“. Erst „Bearbeiten“ (oder Doppelklick) zeigt den Edit-Modus, das
-// Formular im Popup. Auf Wunsch („Baum einblenden“) links der Baum zur Navigation, mit denselben
-// Aktionen im Menü; sonst nutzt die Ansicht die ganze Breite. Gespeichert wird mit der Version.
+// Inhalt einer Version bearbeiten. Wurzel ist die Seite, ihr Inhaltsbereich eine Liste; beide
+// stehen fest. Rechts steht die Seite im View-Modus, ihr Inhaltsbereich in einem Rahmen mit
+// „Bearbeiten“ (Listen zeigen ihre Kinder wie auf der Website). Am gewählten Element (Klick)
+// zusätzlich „+ Element“ und „Einfügen“. Erst „Bearbeiten“ (oder Doppelklick) zeigt den
+// Edit-Modus im Popup (edit-dialog.tsx): Formular und bei Containern ihre Kinder. Auf Wunsch
+// („Baum einblenden“) links der Baum zur Navigation, mit allen Aktionen (auch verschieben,
+// ausschneiden, löschen tief im Baum) im Menü; sonst nutzt die Ansicht die ganze Breite.
+// Gespeichert wird mit der Version.
 
 // Ob der Baum eingeblendet ist, merkt sich der Browser (nur Komfort; ohne Speicher: ausgeblendet).
 const TREE_KEY = "editor-tree-visible";
@@ -49,8 +47,6 @@ function saveTreeVisible(visible: boolean) {
     // Ohne Speicher bleibt es beim Zustand dieser Seite.
   }
 }
-
-const hasAttributes = (type: ElementType) => Object.keys(ELEMENT_SCHEMAS[type].attributes).length > 0;
 
 // Bearbeiten eines Elements oder Hinzufügen eines neuen ans Ende eines Containers.
 type Dialog =
@@ -99,7 +95,7 @@ export function PageEditor({
   function edit(path: TreePath) {
     const node = nodeAt(root, path);
     setSelected(path);
-    if (node && hasAttributes(node.type)) setDialog({ mode: "edit", path, element: node });
+    if (node && hasEditMode(node.type)) setDialog({ mode: "edit", path, element: node });
   }
 
   /** Neues Element: erst im Popup ausfüllen; ohne Einstellungen (z. B. Slide) gleich einfügen. */
@@ -123,8 +119,8 @@ export function PageEditor({
   function actions(path: TreePath): Actions {
     const node = nodeAt(root, path)!;
     const result: Actions = { add: [] };
-    if (hasAttributes(node.type)) result.edit = { label: "Bearbeiten", onSelect: () => edit(path) };
-    if (isContainer(node.type)) {
+    if (hasEditMode(node.type)) result.edit = { label: "Bearbeiten", onSelect: () => edit(path) };
+    if (takesChildren(node.type)) {
       result.add = ADDABLE_TYPES.map((type) => ({ type, action: { label: `${elementLabel(type)} hinzufügen`, onSelect: () => add(path, type) } }));
       if (cut) {
         const allowed = canMoveInto(root, cut, path);
@@ -139,7 +135,7 @@ export function PageEditor({
         };
       }
     }
-    if (path.length > 0) {
+    if (!isFixed(root, path)) {
       const parent = path.slice(0, -1);
       const index = path[path.length - 1];
       const siblings = childrenOf(nodeAt(root, parent)!).length;
@@ -166,7 +162,7 @@ export function PageEditor({
     document.getElementById(`element-${pathKey(path)}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, []);
 
-  /** Ein Element der Ansicht in seinem Rahmen; Container rahmen ihre Kinder genauso ein. */
+  /** Ein Element der Ansicht in seinem Rahmen; die Seite rahmt so ihren Inhaltsbereich ein. */
   const framed = (content: ElementContent, path: TreePath): React.ReactNode => (
     <ElementFrame
       key={pathKey(path)}
@@ -328,78 +324,5 @@ function ElementFrame({
       {problem && <p className="not-prose mb-1 text-xs text-red-600">{problem}</p>}
       <div className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0">{children}</div>
     </div>
-  );
-}
-
-/** „+ Element“ mit der Liste der Typen. */
-function AddMenu({ items }: { items: { type: ElementType; action: ElementAction }[] }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const close = useCallback(() => setOpen(false), []);
-  useDismiss(ref, close, { active: open });
-
-  return (
-    <div ref={ref} className="relative">
-      <button type="button" aria-haspopup="menu" aria-expanded={open} className={smallButton} onClick={() => setOpen(!open)}>
-        + Element
-      </button>
-      {open && (
-        <div role="menu" className="absolute right-0 z-20 mt-1 min-w-36 rounded border border-zinc-200 bg-white py-1 shadow-lg">
-          {items.map(({ type, action }) => (
-            <button
-              key={type}
-              type="button"
-              role="menuitem"
-              className="block w-full px-3 py-1.5 text-left text-sm hover:bg-zinc-100 focus:bg-zinc-100 focus:outline-none"
-              onClick={() => {
-                setOpen(false);
-                action.onSelect();
-              }}
-            >
-              {elementLabel(type)}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Edit-Modus im Popup. Escape, „Abbrechen“ oder ein Klick daneben verwerfen. */
-function EditDialog({
-  title,
-  initial,
-  onApply,
-  onClose,
-}: {
-  title: string;
-  initial: ElementCandidate;
-  onApply: (element: DraftElement) => void;
-  onClose: () => void;
-}) {
-  const [element, setElement] = useState(initial);
-  const check = completeElement(element);
-
-  return (
-    <Modal title={title} size="lg" onClose={onClose}>
-      <form
-        className="space-y-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (check.ok) onApply(check.element);
-        }}
-      >
-        <ElementForm element={element} onChange={setElement} />
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="submit" className={primaryButton} disabled={!check.ok}>
-            Übernehmen
-          </button>
-          <button type="button" className={secondaryButton} onClick={onClose}>
-            Abbrechen
-          </button>
-          {!check.ok && <span className="text-sm text-zinc-500">{check.problem}</span>}
-        </div>
-      </form>
-    </Modal>
   );
 }

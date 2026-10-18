@@ -12,7 +12,7 @@ test("Slide befüllen, verschachteln, speichern und als Karussell zeigen", async
   await e.showTree();
 
   // Slide hat keine Einstellungen: wird direkt eingefügt
-  await e.add(/^Seite/, "Slide");
+  await e.add(/^Liste/, "Slide");
   await e.add(/^Slide/, "Überschrift", () => e.dialog.getByRole("textbox", { name: "Überschrift" }).fill("Erste Karte"));
   await e.add(/^Slide/, "Text", () => e.dialog.getByRole("textbox", { name: "Text (Markdown)" }).fill("Zweite Karte"));
   await e.add(/^Slide/, "Slide");
@@ -28,18 +28,25 @@ test("Slide befüllen, verschachteln, speichern und als Karussell zeigen", async
   await expect(page.getByRole("menu")).toHaveCount(0);
 
   await e.menu(/^Text Zweite Karte/, "Nach oben");
-  await expect(e.labels()).toHaveText([/^Seite/, /^Slide/, /^Text/, /^Überschrift/, /^Slide/, /^Bild/]);
+  await expect(e.labels()).toHaveText([/^Seite/, /^Liste/, /^Slide/, /^Text/, /^Überschrift/, /^Slide/, /^Bild/]);
 
-  // Doppelklick auf ein Kind in der Ansicht bearbeitet genau dieses Kind
+  // Die View zeigt die Slide wie auf der Website; bearbeitet wird über die Popups, verschachtelt:
+  // Liste → Slide → Überschrift
   await e.view.getByRole("heading", { name: "Erste Karte" }).dblclick();
+  await e.dialog.getByRole("button", { name: "Slide bearbeiten" }).first().click();
+  await e.dialog.getByRole("button", { name: "Überschrift bearbeiten" }).click();
   await expect(e.dialog.getByRole("textbox", { name: "Überschrift" })).toHaveValue("Erste Karte");
-  await e.dialog.getByRole("button", { name: "Abbrechen" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(3);
+  for (const open of [3, 2, 1]) {
+    await e.dialog.getByRole("button", { name: "Abbrechen" }).last().click();
+    await expect(page.getByRole("dialog")).toHaveCount(open - 1);
+  }
 
   await e.save();
   const saved = await (await page.request.get(`/api/admin/posts/${post.id}/versions/${post.versionId}`)).json();
   type Node = { type: string; data: Record<string, unknown>; children?: Node[] };
   const shape = (n: Node): unknown => (n.children ? [n.type, n.children.map(shape)] : [n.type, n.data]);
-  expect(saved.root.children.map(shape)).toEqual([
+  expect(saved.root.children[0].children.map(shape)).toEqual([
     [
       "slide",
       [
@@ -65,7 +72,7 @@ test("Karussell zeigt Pfeile nur, wenn die Einträge nicht in die Breite passen"
     const current = await (await page.request.get(url)).json();
     const slide = { type: "slide", data: {}, children: Array.from({ length: n }, (_, i) => ({ type: "text", data: { markdown: `Karte ${i + 1}` } })) };
     const response = await page.request.put(url, {
-      data: { title: current.title, tagIds: [], root: { ...current.root, children: [slide] }, updatedAt: current.updatedAt },
+      data: { title: current.title, tagIds: [], root: { ...current.root, children: [{ ...current.root.children[0], children: [slide] }] }, updatedAt: current.updatedAt },
     });
     expect(response.status()).toBe(200);
     return current.previewPath as string;
