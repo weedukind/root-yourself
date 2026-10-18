@@ -1,33 +1,13 @@
-import type { CSSProperties } from "react";
 import { ShowElement } from "@/elements/components";
-import type { RowView } from "@/shared/api/versions";
+import type { PageView } from "@/shared/api/versions";
 
-// Darstellung des Inhalts einer Version. Gemeinsam für die Vorschau im Editor und die
-// öffentliche Seite, damit beide exakt gleich aussehen. Grid-Regeln: .post-row/.post-cell
-// in globals.css.
+// Darstellung des Inhalts einer Version: die Seite und ihr Baum. Gemeinsam für die Vorschau und
+// die öffentliche Seite, damit beide exakt gleich aussehen.
 
-export function PostContent({ rows }: { rows: RowView[] }) {
+export function PostContent({ root }: { root: PageView }) {
   return (
-    <div className="space-y-8">
-      {rows.map((row) => (
-        <div
-          key={row.id}
-          className="post-row"
-          style={{ "--cols": row.gridWidth, "--rows": row.gridHeight } as CSSProperties}
-        >
-          {row.cells.map((cell) => (
-            <div
-              key={cell.id}
-              className="post-cell prose prose-zinc max-w-none"
-              style={{ "--w": cell.width, "--h": cell.height } as CSSProperties}
-            >
-              {cell.elements.map((element) => (
-                <ShowElement key={element.id} element={element} />
-              ))}
-            </div>
-          ))}
-        </div>
-      ))}
+    <div className="prose prose-zinc max-w-none">
+      <ShowElement element={root} />
     </div>
   );
 }

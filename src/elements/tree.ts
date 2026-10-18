@@ -83,6 +83,7 @@ export function summary(node: Node): string {
       return shorten(node.data.markdown.replace(/[#*_`>[\]()-]/g, " ").replace(/\s+/g, " ").trim());
     case "image":
       return shorten(node.data.caption?.trim() || node.media?.alt || (node.media ? "" : "kein Bild gewählt"));
+    case "page":
     case "list":
     case "slide":
       return node.children.length === 1 ? "1 Element" : `${node.children.length} Elemente`;

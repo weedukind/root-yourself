@@ -2,6 +2,7 @@ import { z } from "zod";
 import { headingSchema } from "./heading/schema";
 import { imageSchema } from "./image/schema";
 import { listSchema } from "./list/schema";
+import { pageSchema } from "./page/schema";
 import { slideSchema } from "./slide/schema";
 import { textSchema } from "./text/schema";
 
@@ -16,6 +17,7 @@ export const ELEMENT_SCHEMAS = {
   image: imageSchema,
   list: listSchema,
   slide: slideSchema,
+  page: pageSchema,
 };
 
 type Schemas = typeof ELEMENT_SCHEMAS;
@@ -24,6 +26,10 @@ export const ELEMENT_TYPES = Object.keys(ELEMENT_SCHEMAS) as ElementType[];
 export const elementLabel = (type: ElementType) => ELEMENT_SCHEMAS[type].label;
 export const isElementType = (type: string): type is ElementType => Object.hasOwn(ELEMENT_SCHEMAS, type);
 export const isContainer = (type: ElementType) => ELEMENT_SCHEMAS[type].container;
+/** Die Wurzel einer Version (Page): steht nur ganz oben. */
+export const isRoot = (type: ElementType) => ELEMENT_SCHEMAS[type].root;
+/** Typen, die man in einen Container einfügen kann (alle außer der Wurzel). */
+export const ADDABLE_TYPES = ELEMENT_TYPES.filter((type) => !isRoot(type));
 
 export type MediaRef = { id: string; url: string; width: number; height: number; alt: string };
 
@@ -87,14 +93,18 @@ function inputSchema(type: ElementType): z.ZodType {
     type: z.literal(type),
     data,
     ...(media ? { mediaId: z.uuid() } : {}),
-    // Rekursiv: Kinder beliebigen Typs. Die Menge begrenzt cellInput (versions.ts).
+    // Rekursiv: Kinder beliebigen Typs außer der Wurzel. Die Menge begrenzt saveVersionInput.
     ...(container ? { children: z.array(z.lazy(() => elementInput)) } : {}),
   });
 }
 
+/** Ein Element unterhalb der Wurzel. */
 export const elementInput: z.ZodType<ElementInput> = z.lazy(() =>
-  z.discriminatedUnion("type", ELEMENT_TYPES.map(inputSchema) as [z.ZodObject, ...z.ZodObject[]]),
+  z.discriminatedUnion("type", ADDABLE_TYPES.map(inputSchema) as [z.ZodObject, ...z.ZodObject[]]),
 ) as unknown as z.ZodType<ElementInput>;
+
+/** Die Wurzel einer Version: eine Page mit ihren Kindern. */
+export const pageInput = inputSchema("page") as unknown as z.ZodType<Extract<ElementInput, { type: "page" }>>;
 
 export const newElement = (type: ElementType, key: string) =>
   ({ key, type, data: ELEMENT_SCHEMAS[type].empty(), ...(isContainer(type) ? { children: [] } : {}) }) as ElementCandidate;

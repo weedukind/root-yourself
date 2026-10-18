@@ -1,5 +1,5 @@
 import { and, countDistinct, desc, eq, inArray, sql } from "drizzle-orm";
-import { cellElements, elements, media, mediaTags, tags } from "@/db/schema";
+import { elements, media, mediaTags, tags, versionElements } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { byName } from "@/lib/sort";
 import {
@@ -121,10 +121,10 @@ export async function listMedia(
   filter: { folderId?: string; tagId?: string } = {},
 ): Promise<MediaWithUsage[]> {
   const rows = await db
-    .select({ media, versionCount: countDistinct(cellElements.versionId) })
+    .select({ media, versionCount: countDistinct(versionElements.versionId) })
     .from(media)
     .leftJoin(elements, eq(elements.mediaId, media.id))
-    .leftJoin(cellElements, eq(cellElements.elementId, elements.id))
+    .leftJoin(versionElements, eq(versionElements.elementId, elements.id))
     .where(
       and(
         filter.folderId ? eq(media.folderId, filter.folderId) : undefined,

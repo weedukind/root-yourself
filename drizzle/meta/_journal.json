@@ -57,6 +57,13 @@
       "when": 1792234344472,
       "tag": "0007_slide_children",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792275111202,
+      "tag": "0008_page_tree",
+      "breakpoints": true
     }
   ]
 }

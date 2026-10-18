@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cellElements, cells, elements, posts, rows, tags, versions } from "@/db/schema";
+import { elements, posts, tags, versionElements, versions } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { createFolder, withRollback } from "../../../test/db";
 import { memoryStorage } from "../../../test/memory-storage";
@@ -25,13 +25,9 @@ async function uploaded(db: Db, mem: ReturnType<typeof memoryStorage>, folderId?
 async function useInVersion(db: Db, mediaId: string) {
   const [post] = await db.insert(posts).values({ slug: `p-${crypto.randomUUID()}` }).returning();
   const [version] = await db.insert(versions).values({ postId: post.id, number: 1, title: "T" }).returning();
-  const [row] = await db.insert(rows).values({ versionId: version.id, position: 0, gridWidth: 1, gridHeight: 1 }).returning();
-  const [cell] = await db
-    .insert(cells)
-    .values({ versionId: version.id, rowId: row.id, position: 0, width: 1, height: 1 })
-    .returning();
   const [element] = await db.insert(elements).values({ postId: post.id, type: "image", mediaId }).returning();
-  await db.insert(cellElements).values({ cellId: cell.id, versionId: version.id, postId: post.id, position: 0, elementId: element.id });
+  // Für die Zählung reicht das Bild als einziges Element des Baums.
+  await db.insert(versionElements).values({ versionId: version.id, postId: post.id, elementId: element.id, position: 0 });
 }
 
 describe("prepareUpload", () => {

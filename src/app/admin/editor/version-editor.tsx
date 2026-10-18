@@ -3,15 +3,15 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { PostContent } from "@/components/post-content";
+import { elementProblems } from "@/elements/schema";
 import type { ApiError } from "@/shared/api/errors";
 import type { VersionSummary } from "@/shared/api/posts";
 import type { TagWithUsage } from "@/shared/api/tags";
 import type { SaveVersionResult, VersionDetail } from "@/shared/api/versions";
 import { api } from "../api-client";
 import { Badge, ErrorText, inputClass, PreviewLink, primaryButton, PublicPostLink, secondaryButton } from "../ui";
-import { type Draft, fingerprint, fromVersion, toInput, toRowViews } from "./draft";
-import { LayoutEditor } from "./layout-editor";
+import { type Draft, fingerprint, fromVersion, toInput } from "./draft";
+import { PageEditor } from "./page-editor";
 import { ShareLinkPanel } from "./share-link";
 
 type Loaded = { version: VersionDetail; draft: Draft; baseline: string };
@@ -20,7 +20,6 @@ export function VersionEditor({ postId, versionId }: { postId: string; versionId
   const router = useRouter();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [allTags, setAllTags] = useState<TagWithUsage[]>([]);
-  const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [error, setError] = useState<ApiError | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -69,6 +68,9 @@ export function VersionEditor({ postId, versionId }: { postId: string; versionId
 
   const { version, draft } = loaded;
   const frozen = !version.isEditable && !version.isPublished;
+  // Unvollständige Elemente (im Baum markiert) verhindern Speichern und Veröffentlichen.
+  const problems = elementProblems(draft.root);
+  const incomplete = problems.size > 0;
 
   async function save() {
     setBusy(true);
@@ -160,7 +162,7 @@ export function VersionEditor({ postId, versionId }: { postId: string; versionId
                 : "Nicht veröffentlicht – der Post ist noch nicht öffentlich."}
               {dirty && " Die Vorschau zeigt den gespeicherten Stand."}
             </span>
-            <button type="button" className={primaryButton} onClick={publish} disabled={busy}>
+            <button type="button" className={primaryButton} onClick={publish} disabled={busy || incomplete}>
               {dirty ? "Speichern und veröffentlichen" : "Veröffentlichen"}
             </button>
           </div>
@@ -205,35 +207,23 @@ export function VersionEditor({ postId, versionId }: { postId: string; versionId
         </fieldset>
       </div>
 
-      <div className="flex items-center gap-2" role="tablist">
-        {(["edit", "preview"] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            role="tab"
-            aria-selected={mode === m}
-            className={mode === m ? primaryButton : secondaryButton}
-            onClick={() => setMode(m)}
-          >
-            {m === "edit" ? "Layout & Inhalt" : "Vorschau"}
-          </button>
-        ))}
-      </div>
-
-      {mode === "edit" ? (
-        <LayoutEditor draft={draft} update={update} readOnly={frozen} />
-      ) : (
-        <article className="rounded border border-zinc-200 bg-white p-6">
-          <h1 className="mb-6 text-3xl font-bold">{draft.title}</h1>
-          <PostContent rows={toRowViews(draft)} />
-        </article>
-      )}
+      <PageEditor
+        root={draft.root}
+        problems={problems}
+        readOnly={frozen}
+        onChange={(root) => update((d) => ({ ...d, root }))}
+      />
 
       {!frozen && (
         <div className="sticky bottom-0 flex flex-wrap items-center gap-2 border-t border-zinc-200 bg-zinc-50/95 py-3">
-          <button type="button" className={primaryButton} onClick={save} disabled={busy || !dirty}>
+          <button type="button" className={primaryButton} onClick={save} disabled={busy || !dirty || incomplete}>
             {version.isPublished ? "Als neue Version speichern" : "Speichern"}
           </button>
+          {incomplete && (
+            <span className="text-sm text-zinc-600">
+              {problems.size === 1 ? "1 Element ist" : `${problems.size} Elemente sind`} unvollständig (im Baum rot markiert).
+            </span>
+          )}
           {dirty && (
             <button
               type="button"

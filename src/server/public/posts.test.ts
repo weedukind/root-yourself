@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Db } from "@/db/types";
 import { withRollback } from "../../../test/db";
+import { page, text } from "../../../test/elements";
 import { memoryStorage } from "../../../test/memory-storage";
 import { changeSlug, createPost, getPost } from "../posts/posts";
 import { getVersion, saveVersion } from "../versions/content";
@@ -18,7 +19,7 @@ async function post(db: Db, title: string, publish: boolean) {
   await saveVersion(db, storage, created.value.id, v1.value.id, {
     title,
     tagIds: [],
-    rows: [{ gridWidth: 1, gridHeight: 1, cells: [{ width: 1, height: 1, elements: [{ type: "text", data: { markdown: "Hallo" } }] }] }],
+    root: page([text("Hallo")], v1.value.root.id),
     updatedAt: v1.value.updatedAt,
   });
   if (publish) await publishVersion(db, created.value.id, v1.value.id);
@@ -34,7 +35,7 @@ describe("findPublishedPost", () => {
       const result = await findPublishedPost(db, storage, "wurzeln");
       expect(result).toMatchObject({ kind: "post", post: { slug: "wurzeln", title: "Wurzeln", tags: [] } });
       if (result.kind === "post") {
-        expect(result.post.rows[0].cells[0].elements[0]).toMatchObject({ type: "text", data: { markdown: "Hallo" } });
+        expect(result.post.root.children[0]).toMatchObject({ type: "text", data: { markdown: "Hallo" } });
         expect(result.post.firstPublishedAt).toBeTruthy();
       }
     }));

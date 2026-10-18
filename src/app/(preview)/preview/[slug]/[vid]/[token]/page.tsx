@@ -45,7 +45,7 @@ export default async function PreviewPage({ params }: PageProps<"/preview/[slug]
         firstPublishedAt={version.postFirstPublishedAt}
         publishedAt={version.isPublished ? version.publishedAt : null}
         tags={version.tags}
-        rows={version.rows}
+        root={version.root}
       />
     </SiteFrame>
   );

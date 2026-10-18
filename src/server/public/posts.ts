@@ -2,7 +2,7 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { posts, postSlugRedirects } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { TagRef } from "@/shared/api/tags";
-import type { RowView } from "@/shared/api/versions";
+import type { PageView } from "@/shared/api/versions";
 import type { MediaStorage } from "../media/storage";
 import { getVersion } from "../versions/content";
 
@@ -16,7 +16,7 @@ export type PublicPost = {
   /** Veröffentlichung der aktuell öffentlichen Version („Aktualisiert am“, wenn später). */
   publishedAt: string | null;
   tags: TagRef[];
-  rows: RowView[];
+  root: PageView;
 };
 
 export type PostLookup =
@@ -42,7 +42,7 @@ export async function findPublishedPost(db: Db, storage: MediaStorage, slug: str
         firstPublishedAt: post.firstPublishedAt!.toISOString(),
         publishedAt: version.value.publishedAt,
         tags: version.value.tags,
-        rows: version.value.rows,
+        root: version.value.root,
       },
     };
   }

@@ -1,0 +1,405 @@
+"use client";
+
+import { useCallback, useRef, useState } from "react";
+import { ViewElement } from "@/elements/components";
+import { ElementForm } from "@/elements/form";
+import {
+  ADDABLE_TYPES,
+  childrenOf,
+  completeElement,
+  type DraftElement,
+  type ElementCandidate,
+  type ElementContent,
+  ELEMENT_SCHEMAS,
+  elementLabel,
+  type ElementType,
+  isContainer,
+  pathKey,
+  type TreePath,
+} from "@/elements/schema";
+import { appendChild, canMoveInto, moveInto, moveWithin, nodeAt, removeAt, updateAt } from "@/elements/tree";
+import { Modal } from "../modal";
+import { primaryButton, secondaryButton, smallButton } from "../ui";
+import { useDismiss } from "../use-dismiss";
+import { createElement, toView } from "./draft";
+import { type ElementAction, ElementTree } from "./element-tree";
+
+// Inhalt einer Version bearbeiten. Der Inhaltsbereich ist selbst ein Element, die Seite; rechts
+// steht sie im View-Modus, jedes Element (auch die Seite) in einem Rahmen mit „Bearbeiten“. Am
+// gewählten Element (Klick) zusätzlich: nach oben/unten, ausschneiden, löschen; Container
+// „+ Element“ und „Einfügen“. Erst „Bearbeiten“ (oder Doppelklick) zeigt den Edit-Modus, das
+// Formular im Popup. Auf Wunsch („Baum einblenden“) links der Baum zur Navigation, mit denselben
+// Aktionen im Menü; sonst nutzt die Ansicht die ganze Breite. Gespeichert wird mit der Version.
+
+// Ob der Baum eingeblendet ist, merkt sich der Browser (nur Komfort; ohne Speicher: ausgeblendet).
+const TREE_KEY = "editor-tree-visible";
+
+function loadTreeVisible(): boolean {
+  try {
+    return localStorage.getItem(TREE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function saveTreeVisible(visible: boolean) {
+  try {
+    localStorage.setItem(TREE_KEY, visible ? "1" : "0");
+  } catch {
+    // Ohne Speicher bleibt es beim Zustand dieser Seite.
+  }
+}
+
+const hasAttributes = (type: ElementType) => Object.keys(ELEMENT_SCHEMAS[type].attributes).length > 0;
+
+// Bearbeiten eines Elements oder Hinzufügen eines neuen ans Ende eines Containers.
+type Dialog =
+  | { mode: "edit"; path: TreePath; element: ElementCandidate }
+  | { mode: "add"; container: TreePath; element: ElementCandidate };
+
+/** Die Aktionen an einem Element, gruppiert – der Baum zeigt sie als Menü, die Ansicht als Knöpfe. */
+type Actions = {
+  edit?: ElementAction;
+  add: { type: ElementType; action: ElementAction }[];
+  paste?: ElementAction;
+  up?: ElementAction;
+  down?: ElementAction;
+  cut?: ElementAction;
+  remove?: ElementAction;
+};
+
+export function PageEditor({
+  root,
+  problems,
+  readOnly,
+  onChange,
+}: {
+  root: ElementCandidate;
+  problems: Map<string, string>;
+  readOnly: boolean;
+  onChange: (root: ElementCandidate) => void;
+}) {
+  // Gewähltes Element; zu Beginn keins.
+  const [selected, setSelected] = useState<TreePath | null>(null);
+  // Ausgeschnittenes Element, wartet auf „Einfügen“ in einen Container.
+  const [cut, setCut] = useState<TreePath | null>(null);
+  const [dialog, setDialog] = useState<Dialog | null>(null);
+  // Der Editor erscheint erst nach dem Laden der Version im Browser, localStorage ist verfügbar.
+  const [showTree, setShowTree] = useState(loadTreeVisible);
+  // Nach Löschen oder Verschieben kann der Pfad ins Leere zeigen: dann keins.
+  const current = selected && nodeAt(root, selected) ? selected : null;
+
+  /** Strukturänderung; ein ausgeschnittener Pfad gilt danach nicht mehr. */
+  function restructure(next: ElementCandidate, nextSelected: TreePath) {
+    onChange(next);
+    setSelected(nextSelected);
+    setCut(null);
+  }
+
+  function edit(path: TreePath) {
+    const node = nodeAt(root, path);
+    setSelected(path);
+    if (node && hasAttributes(node.type)) setDialog({ mode: "edit", path, element: node });
+  }
+
+  /** Neues Element: erst im Popup ausfüllen; ohne Einstellungen (z. B. Slide) gleich einfügen. */
+  function add(container: TreePath, type: ElementType) {
+    const element = createElement(type);
+    if (hasAttributes(type)) return setDialog({ mode: "add", container, element });
+    restructure(appendChild(root, container, element), [...container, childrenOf(nodeAt(root, container)!).length]);
+  }
+
+  function apply(element: DraftElement) {
+    if (!dialog) return;
+    if (dialog.mode === "edit") {
+      onChange(updateAt(root, dialog.path, () => element));
+    } else {
+      const index = childrenOf(nodeAt(root, dialog.container)!).length;
+      restructure(appendChild(root, dialog.container, element), [...dialog.container, index]);
+    }
+    setDialog(null);
+  }
+
+  function actions(path: TreePath): Actions {
+    const node = nodeAt(root, path)!;
+    const result: Actions = { add: [] };
+    if (hasAttributes(node.type)) result.edit = { label: "Bearbeiten", onSelect: () => edit(path) };
+    if (isContainer(node.type)) {
+      result.add = ADDABLE_TYPES.map((type) => ({ type, action: { label: `${elementLabel(type)} hinzufügen`, onSelect: () => add(path, type) } }));
+      if (cut) {
+        const allowed = canMoveInto(root, cut, path);
+        result.paste = {
+          label: `„${elementLabel(nodeAt(root, cut)!.type)}“ hier einfügen`,
+          disabled: !allowed,
+          title: allowed ? undefined : "Nicht in sich selbst oder ein eigenes Kind",
+          onSelect: () => {
+            const moved = moveInto(root, cut, path);
+            restructure(moved.root, moved.path);
+          },
+        };
+      }
+    }
+    if (path.length > 0) {
+      const parent = path.slice(0, -1);
+      const index = path[path.length - 1];
+      const siblings = childrenOf(nodeAt(root, parent)!).length;
+      result.up = { label: "Nach oben", disabled: index === 0, onSelect: () => restructure(moveWithin(root, path, -1), [...parent, index - 1]) };
+      result.down = {
+        label: "Nach unten",
+        disabled: index === siblings - 1,
+        onSelect: () => restructure(moveWithin(root, path, 1), [...parent, index + 1]),
+      };
+      result.cut = { label: "Ausschneiden", onSelect: () => setCut(path) };
+      result.remove = { label: "Löschen", danger: true, onSelect: () => restructure(removeAt(root, path), parent) };
+    }
+    return result;
+  }
+
+  const actionsFor = (path: TreePath): ElementAction[] => {
+    const a = actions(path);
+    return [a.edit, ...a.add.map((x) => x.action), a.paste, a.up, a.down, a.cut, a.remove].filter((x): x is ElementAction => Boolean(x));
+  };
+
+  /** Element im Baum gewählt: in der Ansicht dorthin scrollen. */
+  const selectFromTree = useCallback((path: TreePath) => {
+    setSelected(path);
+    document.getElementById(`element-${pathKey(path)}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, []);
+
+  /** Ein Element der Ansicht in seinem Rahmen; Container rahmen ihre Kinder genauso ein. */
+  const framed = (content: ElementContent, path: TreePath): React.ReactNode => (
+    <ElementFrame
+      key={pathKey(path)}
+      path={path}
+      label={elementLabel(content.type)}
+      selected={current !== null && pathKey(path) === pathKey(current)}
+      isCut={cut !== null && pathKey(cut) === pathKey(path)}
+      problem={problems.get(pathKey(path))}
+      actions={readOnly ? undefined : actions(path)}
+      onSelect={() => setSelected(path)}
+      onEdit={() => edit(path)}
+    >
+      <ViewElement element={content} renderChild={(child, i) => framed(child, [...path, i])} />
+    </ElementFrame>
+  );
+
+  return (
+    <div
+      className="space-y-3"
+      onKeyDown={(e) => {
+        // Esc hebt das Ausschneiden auf.
+        if (e.key === "Escape" && cut) {
+          e.preventDefault();
+          setCut(null);
+        }
+      }}
+    >
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          className={smallButton}
+          aria-expanded={showTree}
+          aria-controls="element-tree"
+          onClick={() => {
+            saveTreeVisible(!showTree);
+            setShowTree(!showTree);
+          }}
+        >
+          {showTree ? "Baum ausblenden" : "Baum einblenden"}
+        </button>
+        {cut && <span className="text-xs text-zinc-500">Ausgeschnitten – an einem Container „Einfügen“, Esc hebt auf.</span>}
+      </div>
+
+      {/* Ohne Baum nutzt die Ansicht die ganze Breite. */}
+      <div className={showTree ? "grid gap-4 md:grid-cols-[16rem_1fr]" : ""}>
+        {showTree && (
+          <nav
+            id="element-tree"
+            aria-label="Elemente"
+            className="self-start rounded border border-zinc-200 bg-white p-2 md:sticky md:top-4 md:max-h-[80vh] md:overflow-auto"
+          >
+            <ElementTree
+              root={root}
+              selected={current}
+              cut={cut}
+              problems={problems}
+              readOnly={readOnly}
+              onSelect={selectFromTree}
+              onEdit={edit}
+              actionsFor={actionsFor}
+            />
+          </nav>
+        )}
+
+        <section aria-label="Ansicht" className="prose prose-zinc min-w-0 max-w-none">
+          {framed(toView(root), [])}
+        </section>
+      </div>
+
+      {dialog && (
+        <EditDialog
+          title={`${elementLabel(dialog.element.type)} ${dialog.mode === "add" ? "hinzufügen" : "bearbeiten"}`}
+          initial={dialog.element}
+          onApply={apply}
+          onClose={() => setDialog(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Rahmen um ein Element in der Ansicht: Bezeichnung und Knöpfe, darunter seine View. */
+function ElementFrame({
+  path,
+  label,
+  selected,
+  isCut,
+  problem,
+  actions,
+  onSelect,
+  onEdit,
+  children,
+}: {
+  path: TreePath;
+  label: string;
+  selected: boolean;
+  isCut: boolean;
+  problem?: string;
+  /** Fehlt bei eingefrorenen Versionen: dann keine Knöpfe. */
+  actions?: Actions;
+  onSelect: () => void;
+  onEdit: () => void;
+  children: React.ReactNode;
+}) {
+  const icon = `${smallButton} px-1.5 leading-none`;
+  return (
+    <div
+      id={`element-${pathKey(path)}`}
+      className={`rounded border p-2 ${selected ? "border-zinc-900 ring-1 ring-zinc-900" : problem ? "border-red-400" : "border-dashed border-zinc-300"} ${isCut ? "opacity-50" : ""}`}
+      // Innere Rahmen gehen vor: nur das angeklickte Element wählen bzw. bearbeiten.
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect();
+      }}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        // Doppelklick auf Knöpfe (z. B. Pfeile eines Karussells) bearbeitet nicht.
+        if (!(e.target as Element).closest("button") && actions?.edit) onEdit();
+      }}
+    >
+      <div className="not-prose mb-1 flex flex-wrap items-center gap-1 text-xs">
+        <span className="font-medium text-zinc-500">{label}</span>
+        {actions && (
+          <div className="ml-auto flex flex-wrap items-center gap-1">
+            {actions.edit && (
+              <button type="button" className={smallButton} onClick={actions.edit.onSelect}>
+                Bearbeiten
+              </button>
+            )}
+            {selected && actions.add.length > 0 && <AddMenu items={actions.add} />}
+            {selected && actions.paste && (
+              <button type="button" className={smallButton} disabled={actions.paste.disabled} title={actions.paste.title} onClick={actions.paste.onSelect}>
+                Einfügen
+              </button>
+            )}
+            {selected && actions.up && (
+              <button type="button" className={icon} disabled={actions.up.disabled} aria-label="Nach oben" title="Nach oben" onClick={actions.up.onSelect}>
+                ↑
+              </button>
+            )}
+            {selected && actions.down && (
+              <button type="button" className={icon} disabled={actions.down.disabled} aria-label="Nach unten" title="Nach unten" onClick={actions.down.onSelect}>
+                ↓
+              </button>
+            )}
+            {selected && actions.cut && (
+              <button type="button" className={icon} aria-label="Ausschneiden" title="Ausschneiden" onClick={actions.cut.onSelect}>
+                ✂
+              </button>
+            )}
+            {selected && actions.remove && (
+              <button type="button" className={`${icon} hover:text-red-600`} aria-label="Löschen" title="Löschen" onClick={actions.remove.onSelect}>
+                ✕
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      {problem && <p className="not-prose mb-1 text-xs text-red-600">{problem}</p>}
+      <div className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0">{children}</div>
+    </div>
+  );
+}
+
+/** „+ Element“ mit der Liste der Typen. */
+function AddMenu({ items }: { items: { type: ElementType; action: ElementAction }[] }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(ref, close, { active: open });
+
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" aria-haspopup="menu" aria-expanded={open} className={smallButton} onClick={() => setOpen(!open)}>
+        + Element
+      </button>
+      {open && (
+        <div role="menu" className="absolute right-0 z-20 mt-1 min-w-36 rounded border border-zinc-200 bg-white py-1 shadow-lg">
+          {items.map(({ type, action }) => (
+            <button
+              key={type}
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-1.5 text-left text-sm hover:bg-zinc-100 focus:bg-zinc-100 focus:outline-none"
+              onClick={() => {
+                setOpen(false);
+                action.onSelect();
+              }}
+            >
+              {elementLabel(type)}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Edit-Modus im Popup. Escape, „Abbrechen“ oder ein Klick daneben verwerfen. */
+function EditDialog({
+  title,
+  initial,
+  onApply,
+  onClose,
+}: {
+  title: string;
+  initial: ElementCandidate;
+  onApply: (element: DraftElement) => void;
+  onClose: () => void;
+}) {
+  const [element, setElement] = useState(initial);
+  const check = completeElement(element);
+
+  return (
+    <Modal title={title} size="lg" onClose={onClose}>
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (check.ok) onApply(check.element);
+        }}
+      >
+        <ElementForm element={element} onChange={setElement} />
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="submit" className={primaryButton} disabled={!check.ok}>
+            Übernehmen
+          </button>
+          <button type="button" className={secondaryButton} onClick={onClose}>
+            Abbrechen
+          </button>
+          {!check.ok && <span className="text-sm text-zinc-500">{check.problem}</span>}
+        </div>
+      </form>
+    </Modal>
+  );
+}
