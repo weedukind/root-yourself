@@ -204,7 +204,7 @@ describe("saveVersion – unveröffentlichtes Blatt", () => {
       expect("children" in container && container.children[0]).toMatchObject({
         type: "image",
         data: { caption: "Unterschrift" },
-        media: { id: image.id, url: "https://media.example/2026/09/bild.png", width: 40, alt: "Ein Bild" },
+        media: { id: image.id, url: "https://media.example/2026/09/bild.png", width: 40, alt: "Ein Bild", filename: "bild.png" },
       });
     }));
 });

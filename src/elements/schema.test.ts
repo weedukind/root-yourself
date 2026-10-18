@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { completeElement, ELEMENT_TYPES, elementInput, newElement } from "./schema";
 
 const MEDIA_ID = "6f9c4a52-8d3b-4c1e-9a7f-2b5d8e0c1a34";
-const media = { id: MEDIA_ID, url: "https://example.com/a.png", width: 10, height: 10, alt: "" };
+const media = { id: MEDIA_ID, url: "https://example.com/a.png", width: 10, height: 10, alt: "", filename: "m1.png" };
 
 describe("elementInput", () => {
   it("nimmt jeden Typ mit seinen Daten an", () => {

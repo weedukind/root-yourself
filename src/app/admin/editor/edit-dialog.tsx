@@ -15,7 +15,7 @@ import {
   takesChildren,
   type TreePath,
 } from "@/elements/schema";
-import { appendChild, canMoveInto, isFixed, moveInto, moveWithin, nodeAt, removeAt, updateAt } from "@/elements/tree";
+import { appendChild, canMoveInto, isFixed, moveInto, moveWithin, nodeAt, nodeLabel, removeAt, updateAt } from "@/elements/tree";
 import { Modal } from "../modal";
 import { ADD_ICON, APPLY_ICON, DELETE_ICON, DOWN_ICON, EDIT_ICON, Icon, REVERT_ICON, TREE_ICON, UP_ICON } from "../icons";
 import { iconButton, primaryIconButton, propertyFrame, smallIconButton } from "../ui";
@@ -278,14 +278,14 @@ export function EditDialog({
   );
 }
 
-/** Pfad im Baum bis zum bearbeiteten Element; Stufen mit Edit-Modus führen dorthin zurück. */
+/** Pfad im Baum bis zum bearbeiteten Element, je mit seinem Label; Stufen mit Edit-Modus führen dorthin zurück. */
 function Breadcrumb({ root, path, onSelect }: { root: ElementCandidate; path: TreePath; onSelect: (path: TreePath) => void }) {
   const steps = [[], ...path.map((_, i) => path.slice(0, i + 1))];
   return (
     <span className="flex flex-wrap items-center gap-1">
       {steps.map((step, i) => {
         const node = nodeAt(root, step)!;
-        const label = elementLabel(node.type);
+        const label = nodeLabel(node);
         const last = i === steps.length - 1;
         return (
           <span key={pathKey(step)} className="flex items-center gap-1">

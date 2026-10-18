@@ -23,7 +23,7 @@ test("Liste: View wie Show mit Bearbeiten; im Edit-Modus Ausrichtung und Kinder,
   // View: nur der Inhaltsbereich hat „Bearbeiten“, die Seite hat keine Einstellungen
   await expect(e.view.getByRole("button", { name: "Bearbeiten" })).toHaveCount(1);
   await e.view.getByRole("button", { name: "Bearbeiten" }).click();
-  await expect(title).toHaveText(/^Seite\s*›\s*Liste$/);
+  await expect(title).toHaveText(/^Seite\s*›\s*Liste \[0\]$/);
   await expect(e.dialog.getByLabel("Ausrichtung")).toHaveValue("vertical");
   await expect(e.dialog.getByText("Noch keine Elemente.")).toBeVisible();
   // Ohne Änderungen sind Übernehmen und Abbrechen inaktiv
@@ -34,7 +34,7 @@ test("Liste: View wie Show mit Bearbeiten; im Edit-Modus Ausrichtung und Kinder,
   await e.dialog.getByRole("button", { name: "Element hinzufügen" }).click();
   await page.getByRole("menuitem", { name: "Überschrift", exact: true }).click();
   await expect(dialogs).toHaveCount(1);
-  await expect(title).toHaveText(/Liste\s*›\s*Überschrift$/);
+  await expect(title).toHaveText(/Liste \[1\]\s*›\s*Überschrift$/);
   await expect(e.dialog.getByRole("textbox", { name: "Überschrift" })).toBeFocused();
   await expect(e.dialog.getByRole("button", { name: "Übernehmen" })).toBeDisabled();
   await back();
@@ -92,7 +92,7 @@ test("Liste: View wie Show mit Bearbeiten; im Edit-Modus Ausrichtung und Kinder,
   await e.dialog.getByRole("button", { name: "Element hinzufügen" }).click();
   await page.getByRole("menuitem", { name: "Text", exact: true }).click();
   await e.dialog.getByRole("button", { name: "Abbrechen" }).click();
-  await expect(title).toHaveText(/^Seite\s*›\s*Liste$/);
+  await expect(title).toHaveText(/^Seite\s*›\s*Liste \[2\]$/);
   await expect(e.dialog.getByRole("button", { name: "Text bearbeiten" })).toHaveCount(1);
   await e.close();
 

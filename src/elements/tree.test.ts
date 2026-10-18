@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { type ElementCandidate, newElement } from "./schema";
-import { appendChild, canMoveInto, isFixed, moveInto, moveWithin, nodeAt, removeAt, summary, updateAt } from "./tree";
+import { appendChild, canMoveInto, isFixed, moveInto, moveWithin, nodeAt, nodeLabel, removeAt, summary, updateAt } from "./tree";
 
 const text = (markdown: string): ElementCandidate => ({ key: markdown, type: "text", data: { markdown } });
 const slide = (key: string, children: ElementCandidate[]): ElementCandidate => ({ key, type: "slide", data: {}, children });
@@ -64,6 +64,18 @@ describe("Baum eines Containers", () => {
     expect(removeAt(page, [0])).toBe(page);
     expect(canMoveInto(page, [0], [])).toBe(false);
     expect(canMoveInto(page, [0, 0], [])).toBe(false);
+  });
+
+  it("nodeLabel: Typ und vom Wert abgeleitet – die ersten 10 Zeichen oder die Zahl der Kinder", () => {
+    expect(nodeLabel(text("**Hallo** Welt, wie geht's?"))).toBe("Text [Hallo Welt]");
+    expect(nodeLabel(text(""))).toBe("Text");
+    expect(nodeLabel({ key: "h", type: "heading", data: { level: 2, text: "  Kitchen Sink" } })).toBe("Überschrift [Kitchen Si]");
+    const media = { id: "m", url: "u", width: 1, height: 1, alt: "", filename: "baumkrone-im-sommer.jpg" };
+    expect(nodeLabel({ key: "i", type: "image", data: {}, mediaId: "m", media })).toBe("Bild [baumkrone-]");
+    expect(nodeLabel({ key: "i", type: "image", data: {} })).toBe("Bild");
+    expect(nodeLabel({ key: "l", type: "list", data: { orientation: "vertical" }, children: [text("A"), text("B")] })).toBe("Liste [2]");
+    expect(nodeLabel(root)).toBe("Slide [3]");
+    expect(nodeLabel(newElement("page", "P"))).toBe("Seite");
   });
 
   it("summary beschreibt Elemente kurz", () => {

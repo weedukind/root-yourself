@@ -13,7 +13,8 @@ export type Teaser = {
   /** Erstes nicht leeres Text-Element als reiner Text, gekürzt. */
   excerpt: string | null;
   /** Erstes Bild-Element. */
-  image: MediaRef | null;
+  // Ohne Dateinamen: die Teaser gehen an die öffentliche Seite.
+  image: Omit<MediaRef, "filename"> | null;
 };
 
 export type FeedPage = {

@@ -1,4 +1,4 @@
-import { childrenOf, type ElementCandidate, isRoot, takesChildren, type TreePath } from "./schema";
+import { childrenOf, type ElementCandidate, elementLabel, isRoot, takesChildren, type TreePath } from "./schema";
 
 // Bearbeitung des Baums eines Container-Elements im Popup: Die Wurzel ist der Container, die
 // Zweige sind seine Kinder (TreePath: Indizes, [] ist die Wurzel). Alle Funktionen sind rein und
@@ -79,6 +79,9 @@ export function moveInto(root: Node, from: TreePath, to: TreePath): { root: Node
   return { root: next, path: [...target, childrenOf(nodeAt(next, target)!).length - 1] };
 }
 
+/** Markdown ohne Auszeichnungszeichen, Leerraum zusammengefasst. */
+const plainText = (markdown: string) => markdown.replace(/[#*_`>[\]()-]/g, " ").replace(/\s+/g, " ").trim();
+
 /** Kurze Beschreibung für den Baum, damit man gleichartige Elemente unterscheiden kann. */
 export function summary(node: Node): string {
   const shorten = (text: string) => (text.length > 40 ? `${text.slice(0, 39)}…` : text);
@@ -87,7 +90,7 @@ export function summary(node: Node): string {
       return shorten(node.data.text.trim());
     case "text":
       // Markdown-Zeichen weglassen, nur die ersten Wörter.
-      return shorten(node.data.markdown.replace(/[#*_`>[\]()-]/g, " ").replace(/\s+/g, " ").trim());
+      return shorten(plainText(node.data.markdown));
     case "image":
       return shorten(node.data.caption?.trim() || node.media?.alt || (node.media ? "" : "kein Bild gewählt"));
     case "page":
@@ -95,4 +98,28 @@ export function summary(node: Node): string {
     case "slide":
       return node.children.length === 1 ? "1 Element" : `${node.children.length} Elemente`;
   }
+}
+
+/**
+ * Label eines Elements, abgeleitet aus seinem Wert: Typ und in Klammern die ersten 10 Zeichen des
+ * Texts bzw. Bildnamens oder die Zahl der Kinder, z. B. „Text [Hallo Welt]“, „Liste [3]“. Ohne
+ * Wert (leerer Text, noch kein Bild, Seite) nur der Typ. Steht im Pfad des Popups.
+ */
+export function nodeLabel(node: Node): string {
+  const value = (() => {
+    switch (node.type) {
+      case "heading":
+        return node.data.text.trim().slice(0, 10);
+      case "text":
+        return plainText(node.data.markdown).slice(0, 10);
+      case "image":
+        return node.media?.filename.slice(0, 10) ?? "";
+      case "list":
+      case "slide":
+        return String(node.children.length);
+      case "page":
+        return "";
+    }
+  })();
+  return value ? `${elementLabel(node.type)} [${value}]` : elementLabel(node.type);
 }

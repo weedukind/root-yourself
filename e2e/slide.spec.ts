@@ -41,7 +41,7 @@ test("Slide befüllen, verschachteln, speichern und als Karussell zeigen", async
   await expect(e.dialog.getByRole("textbox", { name: "Überschrift" })).toHaveValue("Erste Karte");
   await expect(page.getByRole("dialog")).toHaveCount(1);
   const title = e.dialog.getByRole("heading").first();
-  await expect(title).toHaveText(/^Seite\s*›\s*Liste\s*›\s*Slide\s*›\s*Überschrift$/);
+  await expect(title).toHaveText(/^Seite\s*›\s*Liste \[1\]\s*›\s*Slide \[3\]\s*›\s*Überschrift \[Erste Kart\]$/);
   await title.getByRole("button", { name: "Slide" }).click();
   await expect(e.dialog.getByRole("button", { name: "Überschrift bearbeiten" })).toBeVisible();
   await e.close();

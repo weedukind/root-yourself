@@ -776,9 +776,13 @@ einem Vorschau-Balken (Version, veröffentlicht oder nicht, Gültigkeit).
     „Elemente“: die Kinder im View-Modus, je in einem Rahmen mit Bearbeiten,
     nach oben/unten und löschen, dazu „Element hinzufügen“ und „Baum
     einblenden“. „Bearbeiten“ an einem Kind ersetzt den Inhalt des Popups durch
-    dessen Edit-Modus, beliebig tief; der Titel zeigt den Pfad im Baum
-    („Seite › Liste › Liste › Text“), ein Klick auf eine Stufe geht dorthin
-    zurück. Das Popup arbeitet auf einer Kopie des Baums: „Übernehmen“ übernimmt
+    dessen Edit-Modus, beliebig tief; der Titel zeigt den Pfad im Baum mit dem
+    Label jedes Elements („Seite › Liste [2] › Liste [3] › Text [Hallo Welt]“),
+    ein Klick auf eine Stufe geht dorthin zurück. Das **Label** ist abgeleitet
+    (`nodeLabel` in `src/elements/tree.ts`): Typ und in Klammern die ersten 10
+    Zeichen von Text bzw. Überschrift, die ersten 10 Zeichen des Dateinamens
+    beim Bild oder die Zahl der Kinder bei Liste und Slide; ohne Wert nur der
+    Typ. Das Popup arbeitet auf einer Kopie des Baums: „Übernehmen“ übernimmt
     alle Änderungen in den Entwurf, „Abbrechen“ stellt den Stand des Entwurfs
     wieder her (ein neues Element fällt wieder weg); beide lassen das Popup
     offen und sind nur aktiv, wenn es Änderungen gibt. „Übernehmen“ ist

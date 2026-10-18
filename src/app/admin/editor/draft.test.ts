@@ -36,7 +36,7 @@ const version: VersionDetail = {
             type: "image",
             data: { caption: "Bild" },
             mediaId: "m1",
-            media: { id: "m1", url: "https://x/m1.png", width: 10, height: 10, alt: "" },
+            media: { id: "m1", url: "https://x/m1.png", width: 10, height: 10, alt: "", filename: "m1.png" },
           },
         ],
       },

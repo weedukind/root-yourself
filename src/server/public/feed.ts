@@ -104,7 +104,7 @@ export async function listTeasers(
   for (const { versionId, ...tag } of tagRows) tagsByVersion.set(versionId, [...(tagsByVersion.get(versionId) ?? []), tag]);
 
   const excerpts = new Map<string, string>();
-  const images = new Map<string, MediaRef>();
+  const images = new Map<string, Omit<MediaRef, "filename">>();
   for (const { versionId, element, medium } of readingOrder(links)) {
     if (element.type === "text" && !excerpts.has(versionId)) {
       const text = excerpt((element.data as { markdown: string }).markdown);

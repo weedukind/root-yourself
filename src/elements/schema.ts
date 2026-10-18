@@ -35,7 +35,8 @@ export const ROOT_CONTENT_TYPE = "list" satisfies ElementType;
 /** Typen, die man in einen Container einfügen kann (alle außer der Wurzel). */
 export const ADDABLE_TYPES = ELEMENT_TYPES.filter((type) => !isRoot(type));
 
-export type MediaRef = { id: string; url: string; width: number; height: number; alt: string };
+/** Bild eines Elements; filename (aus der Mediathek) nur fürs Backend, z. B. fürs Label. */
+export type MediaRef = { id: string; url: string; width: number; height: number; alt: string; filename: string };
 
 type DataOf<T extends ElementType> = z.output<Schemas[T]["data"]>;
 type HasMedia<T extends ElementType> = Schemas[T]["media"] extends true ? true : false;

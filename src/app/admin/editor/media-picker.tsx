@@ -94,7 +94,7 @@ export function MediaPicker({
                 className="block w-full overflow-hidden rounded border border-zinc-200 bg-white hover:border-zinc-500"
                 title={item.alt || item.filename}
                 onClick={() => {
-                  onPick({ id: item.id, url: item.url, width: item.width, height: item.height, alt: item.alt });
+                  onPick({ id: item.id, url: item.url, width: item.width, height: item.height, alt: item.alt, filename: item.filename });
                   setOpen(false);
                 }}
               >

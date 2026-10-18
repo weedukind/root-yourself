@@ -36,6 +36,7 @@ function toElementView(row: ElementRow, medium: MediaRow | null, storage: MediaS
       width: medium!.width,
       height: medium!.height,
       alt: medium!.alt,
+      filename: medium!.filename,
     },
   } as ElementView;
 }
