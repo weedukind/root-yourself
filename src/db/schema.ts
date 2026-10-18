@@ -11,12 +11,13 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
 // Siehe docs/concept.md für das Datenmodell, die Versionsregeln und das Seitenlayout.
 // FKs ohne onDelete sind NO ACTION. Postgres prüft sie am Ende jeder einzelnen Kaskade;
-// cell_elements_element_fk ist deshalb aufgeschoben (drizzle/0001_…), sonst scheitert das
+// version_elements_element_fk ist deshalb aufgeschoben (drizzle/0008_…), sonst scheitert das
 // Löschen eines Posts mit Elementen.
 
 // Millisekunden statt Mikrosekunden: JavaScript-Dates kennen nur Millisekunden. Sonst würde ein
@@ -177,76 +178,43 @@ export const elements = pgTable(
   ],
 );
 
-export const rows = pgTable(
-  "rows",
+// Inhalt einer Version als Baum: Wurzel ist genau ein Page-Element (parent_element_id null),
+// darunter Container (Liste, Slide …) und ihre Kinder. Die Elemente selbst sind zwischen Versionen
+// geteilt (Copy-on-Write); diese Tabelle hält pro Version, wo sie stehen.
+export const versionElements = pgTable(
+  "version_elements",
   {
-    id: uuid("id").primaryKey().defaultRandom(),
-    versionId: uuid("version_id")
-      .notNull()
-      .references(() => versions.id, { onDelete: "cascade" }),
-    position: integer("position").notNull(),
-    gridWidth: integer("grid_width").notNull(),
-    gridHeight: integer("grid_height").notNull(),
-  },
-  (t) => [
-    unique("rows_version_position_unique").on(t.versionId, t.position),
-    unique("rows_version_id_unique").on(t.versionId, t.id),
-    check("rows_grid_check", sql`${t.gridWidth} > 0 AND ${t.gridHeight} > 0`),
-  ],
-);
-
-export const cells = pgTable(
-  "cells",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    versionId: uuid("version_id").notNull(),
-    rowId: uuid("row_id").notNull(),
-    position: integer("position").notNull(),
-    width: integer("width").notNull(),
-    height: integer("height").notNull(),
-  },
-  (t) => [
-    unique("cells_row_position_unique").on(t.rowId, t.position),
-    unique("cells_version_id_unique").on(t.versionId, t.id),
-    check("cells_size_check", sql`${t.width} > 0 AND ${t.height} > 0`),
-    // Die Zelle gehört zu einer Row derselben Version.
-    foreignKey({
-      name: "cells_row_fk",
-      columns: [t.versionId, t.rowId],
-      foreignColumns: [rows.versionId, rows.id],
-    }).onDelete("cascade"),
-  ],
-);
-
-export const cellElements = pgTable(
-  "cell_elements",
-  {
-    cellId: uuid("cell_id").notNull(),
     versionId: uuid("version_id").notNull(),
     postId: uuid("post_id").notNull(),
-    position: integer("position").notNull(),
     elementId: uuid("element_id").notNull(),
+    // Container, in dem das Element steht; null: die Wurzel (Page).
+    parentElementId: uuid("parent_element_id"),
+    // Position innerhalb des Elternteils.
+    position: integer("position").notNull(),
   },
   (t) => [
-    primaryKey({ columns: [t.cellId, t.position] }),
     // Jedes Element höchstens einmal pro Version.
-    unique("cell_elements_version_element_unique").on(t.versionId, t.elementId),
+    primaryKey({ name: "version_elements_pkey", columns: [t.versionId, t.elementId] }),
+    unique("version_elements_position_unique").on(t.versionId, t.parentElementId, t.position).nullsNotDistinct(),
+    // Genau eine Wurzel pro Version (dass es eine gibt, sichern Anlegen und Speichern).
+    uniqueIndex("version_elements_root_unique").on(t.versionId).where(sql`${t.parentElementId} IS NULL`),
+    // Das Elternteil steht in derselben Version; fällt es weg, fallen seine Kinder mit.
     foreignKey({
-      name: "cell_elements_cell_fk",
-      columns: [t.versionId, t.cellId],
-      foreignColumns: [cells.versionId, cells.id],
+      name: "version_elements_parent_fk",
+      columns: [t.versionId, t.parentElementId],
+      foreignColumns: [t.versionId, t.elementId],
     }).onDelete("cascade"),
     foreignKey({
-      name: "cell_elements_version_fk",
+      name: "version_elements_version_fk",
       columns: [t.postId, t.versionId],
       foreignColumns: [versions.postId, versions.id],
     }).onDelete("cascade"),
     foreignKey({
-      name: "cell_elements_element_fk",
+      name: "version_elements_element_fk",
       columns: [t.postId, t.elementId],
       foreignColumns: [elements.postId, elements.id],
     }),
-    index("cell_elements_element_idx").on(t.elementId),
+    index("version_elements_element_idx").on(t.elementId),
   ],
 );
 

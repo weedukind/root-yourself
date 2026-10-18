@@ -2,8 +2,9 @@ import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { media, posts, tags } from "@/db/schema";
 import type { Db } from "@/db/types";
-import type { ElementInput, SaveVersionInput } from "@/shared/api/versions";
+import type { ElementInput } from "@/shared/api/versions";
 import { createFolder, withRollback } from "../../../test/db";
+import { heading, list, page, slide, text } from "../../../test/elements";
 import { memoryStorage } from "../../../test/memory-storage";
 import { createPost } from "../posts/posts";
 import { getVersion, saveVersion } from "../versions/content";
@@ -12,17 +13,13 @@ import { decodeCursor, encodeCursor, findTag, listTeasers } from "./feed";
 
 const { storage } = memoryStorage();
 
-const text = (markdown: string): ElementInput => ({ type: "text", data: { markdown } });
-const oneCell = (elements: ElementInput[]): SaveVersionInput["rows"] => [
-  { gridWidth: 1, gridHeight: 1, cells: [{ width: 1, height: 1, elements }] },
-];
 
 /** Legt einen Post mit Inhalt an, veröffentlicht ihn und setzt das Veröffentlichungsdatum. */
 async function published(
   db: Db,
   title: string,
   day: number,
-  content: { rows?: SaveVersionInput["rows"]; tagIds?: string[]; publish?: boolean } = {},
+  content: { children?: ElementInput[]; tagIds?: string[]; publish?: boolean } = {},
 ) {
   const created = await createPost(db, { title });
   if (!created.ok) throw new Error(created.error.message);
@@ -32,7 +29,7 @@ async function published(
   const saved = await saveVersion(db, storage, postId, v1.value.id, {
     title,
     tagIds: content.tagIds ?? [],
-    rows: content.rows ?? oneCell([text(`Text von ${title}`)]),
+    root: page(content.children ?? [text(`Text von ${title}`)], v1.value.root.id),
     updatedAt: v1.value.updatedAt,
   });
   if (!saved.ok) throw new Error(saved.error.message);
@@ -85,16 +82,15 @@ describe("listTeasers", () => {
         .values({ folderId: await createFolder(db), storageKey: "2026/01/a.jpg", filename: "a.jpg", mimeType: "image/jpeg", sizeBytes: 1, width: 800, height: 600, alt: "Wald" })
         .returning();
       await published(db, "Layout", 1, {
-        rows: [
-          {
-            gridWidth: 2,
-            gridHeight: 1,
-            cells: [
-              { width: 1, height: 1, elements: [{ type: "heading", data: { level: 2, text: "Titel" } }, text("   ")] },
-              { width: 1, height: 1, elements: [{ type: "image", data: {}, mediaId: image.id }, text("Erster **echter** Text.")] },
+        children: [
+          list(
+            [
+              list([heading("Titel"), text("   ")]),
+              list([{ type: "image", data: {}, mediaId: image.id }, text("Erster **echter** Text.")]),
             ],
-          },
-          { gridWidth: 1, gridHeight: 1, cells: [{ width: 1, height: 1, elements: [text("Späterer Text.")] }] },
+            "horizontal",
+          ),
+          text("Späterer Text."),
         ],
       });
       const [teaser] = (await listTeasers(db, storage)).teasers;
@@ -102,9 +98,15 @@ describe("listTeasers", () => {
       expect(teaser.image).toEqual({ id: image.id, url: "https://media.example/2026/01/a.jpg", width: 800, height: 600, alt: "Wald" });
     }));
 
+  it("Texte und Bilder in Slides zählen nicht für Anreißer und Teaser-Bild", () =>
+    withRollback(async (db) => {
+      await published(db, "Slides", 1, { children: [slide([text("In der Slide")]), list([text("Danach")])] });
+      expect((await listTeasers(db, storage)).teasers[0]).toMatchObject({ excerpt: "Danach", image: null });
+    }));
+
   it("ohne Text und Bild: kein Anreißer, kein Bild", () =>
     withRollback(async (db) => {
-      await published(db, "Leer", 1, { rows: [] });
+      await published(db, "Leer", 1, { children: [] });
       expect((await listTeasers(db, storage)).teasers[0]).toMatchObject({ excerpt: null, image: null });
     }));
 
@@ -118,7 +120,7 @@ describe("listTeasers", () => {
       await saveVersion(db, storage, postId, fork.value.id, {
         title: "Entwurfstitel",
         tagIds: [],
-        rows: oneCell([text("Entwurfstext")]),
+        root: page([text("Entwurfstext")], draft.value.root.id),
         updatedAt: draft.value.updatedAt,
       });
       expect((await listTeasers(db, storage)).teasers[0]).toMatchObject({ title: "Wurzeln", excerpt: "Text von Wurzeln" });

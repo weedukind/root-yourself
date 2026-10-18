@@ -8,6 +8,10 @@ const button = "rounded px-3 py-1 text-sm font-medium disabled:opacity-50";
 export const primaryButton = `${button} bg-zinc-900 text-white hover:bg-zinc-700`;
 export const secondaryButton = `${button} border border-zinc-300 bg-white hover:bg-zinc-100`;
 export const dangerButton = `${button} bg-red-600 text-white hover:bg-red-500`;
+export const smallButton = `${secondaryButton} px-2 py-0.5 text-xs`;
+const iconButtonBase = "rounded border p-1.5 disabled:opacity-40";
+export const iconButton = `${iconButtonBase} border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100 disabled:hover:bg-white`;
+export const primaryIconButton = `${iconButtonBase} border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-700`;
 
 export function ErrorText({ error }: { error: ApiError | null }) {
   if (!error) return null;

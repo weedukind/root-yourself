@@ -1,12 +1,11 @@
 import { and, asc, countDistinct, eq, inArray, max, sql } from "drizzle-orm";
-import { cellElements, cells, elements, media, rows, tags, versions, versionTags } from "@/db/schema";
+import { elements, media, tags, versionElements, versions, versionTags } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { childrenOf, ELEMENT_SCHEMAS, isContainer, isElementType } from "@/elements/schema";
 import { byName } from "@/lib/sort";
 import type {
-  CellView,
   ElementInput,
   ElementView,
-  RowView,
   SaveVersionInput,
   SaveVersionResult,
   VersionDetail,
@@ -23,28 +22,21 @@ type ElementRow = typeof elements.$inferSelect;
 type MediaRow = typeof media.$inferSelect;
 
 function toElementView(row: ElementRow, medium: MediaRow | null, storage: MediaStorage): ElementView {
-  switch (row.type) {
-    case "heading":
-      return { id: row.id, type: "heading", data: row.data as Extract<ElementView, { type: "heading" }>["data"] };
-    case "text":
-      return { id: row.id, type: "text", data: row.data as Extract<ElementView, { type: "text" }>["data"] };
-    case "image":
-      return {
-        id: row.id,
-        type: "image",
-        data: row.data as Extract<ElementView, { type: "image" }>["data"],
-        mediaId: row.mediaId!,
-        media: {
-          id: medium!.id,
-          url: storage.publicUrl(medium!.storageKey),
-          width: medium!.width,
-          height: medium!.height,
-          alt: medium!.alt,
-        },
-      };
-    default:
-      throw new Error(`Unbekannter Elementtyp ${row.type}`);
-  }
+  if (!isElementType(row.type)) throw new Error(`Unbekannter Elementtyp ${row.type}`);
+  const element = { id: row.id, type: row.type, data: row.data, ...(isContainer(row.type) ? { children: [] } : {}) };
+  // Ob ein Typ ein Bild hat, sichert die Datenbank (elements_media_check, siehe ELEMENT_SCHEMAS).
+  if (!ELEMENT_SCHEMAS[row.type].media) return element as ElementView;
+  return {
+    ...element,
+    mediaId: row.mediaId!,
+    media: {
+      id: medium!.id,
+      url: storage.publicUrl(medium!.storageKey),
+      width: medium!.width,
+      height: medium!.height,
+      alt: medium!.alt,
+    },
+  } as ElementView;
 }
 
 export async function getVersion(
@@ -58,34 +50,31 @@ export async function getVersion(
   const summary = post.value.versions.find((v) => v.id === versionId);
   if (!summary) return notFound("Version");
 
-  const [tagRows, rowRows, cellRows, links] = await Promise.all([
+  const [tagRows, links] = await Promise.all([
     db
       .select({ id: tags.id, name: tags.name, slug: tags.slug })
       .from(versionTags)
       .innerJoin(tags, eq(tags.id, versionTags.tagId))
       .where(eq(versionTags.versionId, versionId)),
-    db.select().from(rows).where(eq(rows.versionId, versionId)).orderBy(asc(rows.position)),
-    db.select().from(cells).where(eq(cells.versionId, versionId)).orderBy(asc(cells.position)),
     db
-      .select({ link: cellElements, element: elements, medium: media })
-      .from(cellElements)
-      .innerJoin(elements, eq(elements.id, cellElements.elementId))
+      .select({ link: versionElements, element: elements, medium: media })
+      .from(versionElements)
+      .innerJoin(elements, eq(elements.id, versionElements.elementId))
       .leftJoin(media, eq(media.id, elements.mediaId))
-      .where(eq(cellElements.versionId, versionId))
-      .orderBy(asc(cellElements.position)),
+      .where(eq(versionElements.versionId, versionId))
+      .orderBy(asc(versionElements.position)),
   ]);
 
-  const cellView = (cellId: string): CellView["elements"] =>
-    links.filter((l) => l.link.cellId === cellId).map((l) => toElementView(l.element, l.medium, storage));
-
-  const rowViews: RowView[] = rowRows.map((row) => ({
-    id: row.id,
-    gridWidth: row.gridWidth,
-    gridHeight: row.gridHeight,
-    cells: cellRows
-      .filter((c) => c.rowId === row.id)
-      .map((c) => ({ id: c.id, width: c.width, height: c.height, elements: cellView(c.id) })),
-  }));
+  // Elemente als Baum: Kinder hängen am Container (parent_element_id), Positionen je Elternteil.
+  const views = new Map(links.map((l) => [l.link.elementId, toElementView(l.element, l.medium, storage)]));
+  for (const { link } of links) {
+    const parent = link.parentElementId ? views.get(link.parentElementId) : undefined;
+    if (parent) childrenOf(parent).push(views.get(link.elementId)!);
+  }
+  const rootLink = links.find((l) => !l.link.parentElementId);
+  const root = rootLink && views.get(rootLink.link.elementId);
+  // Jede Version hat eine Seite als Wurzel (createPost, saveVersion, forkVersion).
+  if (root?.type !== "page") throw new Error(`Version ${versionId} hat keine Seite als Wurzel`);
 
   const published = post.value.publishedVersion;
   return ok({
@@ -95,7 +84,7 @@ export async function getVersion(
     postPublishedVersion: published && { id: published.id, number: published.number },
     postFirstPublishedAt: post.value.firstPublishedAt,
     tags: tagRows.sort(byName),
-    rows: rowViews,
+    root,
   });
 }
 
@@ -114,7 +103,7 @@ function stableJson(value: unknown): string {
 const elementValues = (element: ElementInput) => ({
   type: element.type,
   data: element.data,
-  mediaId: element.type === "image" ? element.mediaId : null,
+  mediaId: "mediaId" in element ? element.mediaId : null,
 });
 
 function unchanged(row: ElementRow, values: ReturnType<typeof elementValues>): boolean {
@@ -151,14 +140,15 @@ export async function saveVersion(
 
       // Bestehende Elemente dürfen nur aus dieser Version stammen. Vor dem Fork prüfen, damit
       // bei einem Fehler kein leerer Fork übrig bleibt.
-      const inputElements = input.rows.flatMap((row) => row.cells.flatMap((cell) => cell.elements));
+      const placed = placeElements(input);
+      const inputElements = placed.map((p) => p.element);
       const sourceLinks = await tx
-        .select({ elementId: cellElements.elementId })
-        .from(cellElements)
-        .where(eq(cellElements.versionId, versionId));
+        .select({ elementId: versionElements.elementId })
+        .from(versionElements)
+        .where(eq(versionElements.versionId, versionId));
       const sourceIds = new Set(sourceLinks.map((l) => l.elementId));
       if (inputElements.some((e) => e.id && !sourceIds.has(e.id))) {
-        return invalid("element_unknown", "Ein Element gehört nicht zu dieser Version", "rows");
+        return invalid("element_unknown", "Ein Element gehört nicht zu dieser Version", "root");
       }
 
       // Veröffentlichte Version: Sie bleibt unverändert, die Änderungen gehen in einen Fork.
@@ -186,10 +176,10 @@ export async function saveVersion(
         ids.length
           ? (
               await tx
-                .select({ elementId: cellElements.elementId, versions: countDistinct(cellElements.versionId) })
-                .from(cellElements)
-                .where(inArray(cellElements.elementId, ids))
-                .groupBy(cellElements.elementId)
+                .select({ elementId: versionElements.elementId, versions: countDistinct(versionElements.versionId) })
+                .from(versionElements)
+                .where(inArray(versionElements.elementId, ids))
+                .groupBy(versionElements.elementId)
             ).map((u) => [u.elementId, u.versions])
           : [],
       );
@@ -212,10 +202,10 @@ export async function saveVersion(
         }
       }
 
-      // Layout und Tags der Zielversion neu schreiben (Strukturdaten ohne Inhalt).
-      await tx.delete(rows).where(eq(rows.versionId, targetId));
+      // Baum und Tags der Zielversion neu schreiben (Strukturdaten ohne Inhalt).
+      await tx.delete(versionElements).where(eq(versionElements.versionId, targetId));
       await tx.delete(versionTags).where(eq(versionTags.versionId, targetId));
-      await writeLayout(tx, postId, targetId, input, resolvedIds);
+      await writeTree(tx, postId, targetId, placed, resolvedIds);
       if (input.tagIds.length > 0) {
         await tx.insert(versionTags).values(input.tagIds.map((tagId) => ({ versionId: targetId, tagId })));
       }
@@ -232,7 +222,7 @@ export async function saveVersion(
       case "version_tags_tag_id_tags_id_fk":
         return invalid("tag_unknown", "Ein angegebener Tag existiert nicht", "tagIds");
       case "elements_media_id_media_id_fk":
-        return invalid("media_unknown", "Ein angegebenes Bild existiert nicht", "rows");
+        return invalid("media_unknown", "Ein angegebenes Bild existiert nicht", "root");
     }
     throw error;
   }
@@ -243,45 +233,30 @@ export async function saveVersion(
   return ok({ version: saved.value, forkedFrom: outcome.value.forkedFrom });
 }
 
-/** Schreibt Rows, Zellen und Element-Verknüpfungen; die Reihenfolge der Arrays ergibt die Positionen. */
-async function writeLayout(
-  tx: Db,
-  postId: string,
-  versionId: string,
-  input: SaveVersionInput,
-  elementIds: string[],
-): Promise<void> {
-  if (input.rows.length === 0) return;
-  const newRows = await tx
-    .insert(rows)
-    .values(input.rows.map((row, position) => ({ versionId, position, gridWidth: row.gridWidth, gridHeight: row.gridHeight })))
-    .returning({ id: rows.id, position: rows.position });
-  const rowIds = new Map(newRows.map((r) => [r.position, r.id]));
+/** Ein Element der Eingabe mit seinem Platz: Elternteil (Index in der Liste, null: Wurzel) und Position. */
+type Placed = { element: ElementInput; parent: number | null; position: number };
 
-  const cellValues = input.rows.flatMap((row, rowPosition) =>
-    row.cells.map((cell, position) => ({
+/** Alle Elemente des Baums in Lesereihenfolge, Elternteil vor seinen Kindern; die Seite zuerst. */
+function placeElements(input: SaveVersionInput): Placed[] {
+  const placed: Placed[] = [];
+  const visit = (element: ElementInput, parent: number | null, position: number) => {
+    placed.push({ element, parent, position });
+    const index = placed.length - 1;
+    childrenOf(element).forEach((child, i) => visit(child, index, i));
+  };
+  visit(input.root, null, 0);
+  return placed;
+}
+
+/** Schreibt die Verknüpfungen des Baums; die Reihenfolge der Kinder ergibt die Positionen. */
+async function writeTree(tx: Db, postId: string, versionId: string, placed: Placed[], elementIds: string[]): Promise<void> {
+  await tx.insert(versionElements).values(
+    placed.map((p, i) => ({
       versionId,
-      rowId: rowIds.get(rowPosition)!,
-      position,
-      width: cell.width,
-      height: cell.height,
+      postId,
+      elementId: elementIds[i],
+      parentElementId: p.parent === null ? null : elementIds[p.parent],
+      position: p.position,
     })),
   );
-  if (cellValues.length === 0) return;
-  const newCells = await tx.insert(cells).values(cellValues).returning({ id: cells.id, rowId: cells.rowId, position: cells.position });
-  const cellIds = new Map(newCells.map((c) => [`${c.rowId}:${c.position}`, c.id]));
-
-  let next = 0;
-  const links = input.rows.flatMap((row, rowPosition) =>
-    row.cells.flatMap((cell, cellPosition) =>
-      cell.elements.map((_, position) => ({
-        cellId: cellIds.get(`${rowIds.get(rowPosition)}:${cellPosition}`)!,
-        versionId,
-        postId,
-        position,
-        elementId: elementIds[next++],
-      })),
-    ),
-  );
-  if (links.length > 0) await tx.insert(cellElements).values(links);
 }

@@ -1,5 +1,5 @@
 import type { TagRef } from "@/shared/api/tags";
-import type { RowView } from "@/shared/api/versions";
+import type { PageView } from "@/shared/api/versions";
 import { formatDate } from "@/lib/format";
 import { PostContent } from "./post-content";
 import { TagList } from "./tag-list";
@@ -13,10 +13,10 @@ export type PostArticleProps = {
   /** Veröffentlichung der gezeigten Version; „Aktualisiert am“, wenn später als die erste. */
   publishedAt: string | null;
   tags: TagRef[];
-  rows: RowView[];
+  root: PageView;
 };
 
-export function PostArticle({ title, firstPublishedAt, publishedAt, tags, rows }: PostArticleProps) {
+export function PostArticle({ title, firstPublishedAt, publishedAt, tags, root }: PostArticleProps) {
   const updated = firstPublishedAt && publishedAt && publishedAt > firstPublishedAt ? publishedAt : null;
   return (
     <article className="space-y-8">
@@ -34,7 +34,7 @@ export function PostArticle({ title, firstPublishedAt, publishedAt, tags, rows }
         )}
         <TagList tags={tags} />
       </header>
-      <PostContent rows={rows} />
+      <PostContent root={root} />
     </article>
   );
 }

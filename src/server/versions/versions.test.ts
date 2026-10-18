@@ -1,6 +1,6 @@
-import { and, asc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { cellElements, cells, elements, rows, tags, versions, versionTags } from "@/db/schema";
+import { elements, tags, versionElements, versions, versionTags } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { PostDetail } from "@/shared/api/posts";
 import { withRollback } from "../../../test/db";
@@ -25,55 +25,36 @@ async function fork(db: Db, post: PostDetail, versionId: string) {
   return result.value;
 }
 
-/** Gibt einer Version zwei Rows mit Zellen, zwei Text-Elemente und einen Tag. */
+/** Gibt der Seite einer Version einen Text und eine Liste mit einem Text darin, dazu einen Tag. */
 async function furnish(db: Db, postId: string, versionId: string) {
-  const [row1, row2] = await db
-    .insert(rows)
-    .values([
-      { versionId, position: 0, gridWidth: 2, gridHeight: 1 },
-      { versionId, position: 1, gridWidth: 1, gridHeight: 1 },
-    ])
-    .returning();
-  const [cellA, cellB, cellC] = await db
-    .insert(cells)
-    .values([
-      { versionId, rowId: row1.id, position: 0, width: 1, height: 1 },
-      { versionId, rowId: row1.id, position: 1, width: 1, height: 1 },
-      { versionId, rowId: row2.id, position: 0, width: 1, height: 1 },
-    ])
-    .returning();
-  const [e1, e2] = await db
+  const [root] = await db.select().from(versionElements).where(eq(versionElements.versionId, versionId));
+  const [e1, list, e2] = await db
     .insert(elements)
     .values([
       { postId, type: "text", data: { markdown: "Eins" } },
+      { postId, type: "list", data: { orientation: "vertical" } },
       { postId, type: "text", data: { markdown: "Zwei" } },
     ])
     .returning();
-  await db.insert(cellElements).values([
-    { cellId: cellA.id, versionId, postId, position: 0, elementId: e1.id },
-    { cellId: cellC.id, versionId, postId, position: 0, elementId: e2.id },
+  const link = { versionId, postId };
+  await db.insert(versionElements).values([
+    { ...link, elementId: e1.id, parentElementId: root.elementId, position: 0 },
+    { ...link, elementId: list.id, parentElementId: root.elementId, position: 1 },
+    { ...link, elementId: e2.id, parentElementId: list.id, position: 0 },
   ]);
   const [tag] = await db.insert(tags).values({ name: "Baum", slug: "baum" }).returning();
   await db.insert(versionTags).values({ versionId, tagId: tag.id });
-  return { cellB, elementIds: [e1.id, e2.id], tagId: tag.id };
+  return { rootId: root.elementId, elementIds: [root.elementId, e1.id, list.id, e2.id], tagId: tag.id };
 }
 
-/** Layout einer Version, unabhängig von IDs der Rows und Zellen. */
-async function layoutOf(db: Db, versionId: string) {
-  const rowList = await db.select().from(rows).where(eq(rows.versionId, versionId)).orderBy(asc(rows.position));
-  const cellList = await db.select().from(cells).where(eq(cells.versionId, versionId));
-  const links = await db.select().from(cellElements).where(eq(cellElements.versionId, versionId));
-  return rowList.map((row) => ({
-    grid: [row.gridWidth, row.gridHeight],
-    cells: cellList
-      .filter((c) => c.rowId === row.id)
-      .sort((a, b) => a.position - b.position)
-      .map((c) => links.filter((l) => l.cellId === c.id).map((l) => l.elementId)),
-  }));
+/** Baum einer Version als [Element, Elternteil, Position], sortiert. */
+async function treeOf(db: Db, versionId: string) {
+  const links = await db.select().from(versionElements).where(eq(versionElements.versionId, versionId));
+  return links.map((l) => [l.elementId, l.parentElementId, l.position]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
 }
 
 describe("forkVersion", () => {
-  it("kopiert Layout und Tags, teilt aber die Elemente", () =>
+  it("kopiert Elementbaum und Tags, teilt aber die Elemente", () =>
     withRollback(async (db) => {
       const post = await newPost(db);
       const v1 = post.versions[0];
@@ -82,14 +63,11 @@ describe("forkVersion", () => {
       const v2 = await fork(db, post, v1.id);
       expect(v2).toMatchObject({ number: 2, parentVersionId: v1.id, title: "Wurzeln", isEditable: true });
 
-      const [original, copy] = [await layoutOf(db, v1.id), await layoutOf(db, v2.id)];
+      const [original, copy] = [await treeOf(db, v1.id), await treeOf(db, v2.id)];
       expect(copy).toEqual(original);
-      expect(copy).toEqual([
-        { grid: [2, 1], cells: [[elementIds[0]], []] },
-        { grid: [1, 1], cells: [[elementIds[1]]] },
-      ]);
-      // Keine neuen Elemente: dieselben IDs in beiden Versionen.
-      expect(await db.select().from(elements).where(eq(elements.postId, post.id))).toHaveLength(2);
+      expect(copy).toHaveLength(4);
+      // Keine neuen Elemente: dieselben IDs in beiden Versionen (Seite, Text, Liste, Text).
+      expect(await db.select().from(elements).where(eq(elements.postId, post.id))).toHaveLength(elementIds.length);
       expect(await db.select().from(versionTags).where(eq(versionTags.versionId, v2.id))).toEqual([
         { versionId: v2.id, tagId },
       ]);
@@ -166,17 +144,14 @@ describe("deleteVersion", () => {
     withRollback(async (db) => {
       const post = await newPost(db);
       const v1 = post.versions[0];
-      const { cellB, elementIds } = await furnish(db, post.id, v1.id);
+      const { rootId, elementIds } = await furnish(db, post.id, v1.id);
       const v2 = await fork(db, post, v1.id);
 
       // v2 bekommt ein eigenes Element zusätzlich zu den geteilten.
       const [own] = await db.insert(elements).values({ postId: post.id, type: "text", data: { markdown: "Nur v2" } }).returning();
-      // Gegenstück zu cellB in v2: die einzige Zelle mit Position 1.
-      const [v2CellB] = await db
-        .select()
-        .from(cells)
-        .where(and(eq(cells.versionId, v2.id), eq(cells.position, cellB.position)));
-      await db.insert(cellElements).values({ cellId: v2CellB.id, versionId: v2.id, postId: post.id, position: 0, elementId: own.id });
+      await db
+        .insert(versionElements)
+        .values({ versionId: v2.id, postId: post.id, elementId: own.id, parentElementId: rootId, position: 2 });
 
       expect(await deleteVersion(db, post.id, v2.id)).toEqual({ ok: true, value: null });
       const remaining = await db.select({ id: elements.id }).from(elements).where(eq(elements.postId, post.id));

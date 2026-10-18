@@ -1,16 +1,6 @@
 import { count, eq, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import {
-  cellElements,
-  cells,
-  elements,
-  media,
-  posts,
-  rows,
-  tags,
-  versions,
-  versionTags,
-} from "@/db/schema";
+import { elements, media, posts, tags, versionElements, versions, versionTags } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { createFolder, expectDbError, withRollback } from "./db";
 
@@ -40,18 +30,6 @@ async function createFork(db: Db, postId: string, parentVersionId: string, numbe
   return version.id;
 }
 
-async function createCell(db: Db, versionId: string, position = 0) {
-  const [row] = await db
-    .insert(rows)
-    .values({ versionId, position, gridWidth: 1, gridHeight: 1 })
-    .returning();
-  const [cell] = await db
-    .insert(cells)
-    .values({ versionId, rowId: row.id, position: 0, width: 1, height: 1 })
-    .returning();
-  return { rowId: row.id, cellId: cell.id };
-}
-
 async function createTextElement(db: Db, postId: string) {
   const [element] = await db
     .insert(elements)
@@ -60,8 +38,14 @@ async function createTextElement(db: Db, postId: string) {
   return element.id;
 }
 
-async function link(db: Db, v: { postId: string; versionId: string; cellId: string }, elementId: string, position = 0) {
-  await db.insert(cellElements).values({ ...v, elementId, position });
+/** Hängt ein Element in den Baum einer Version; ohne parent als Wurzel. */
+async function link(
+  db: Db,
+  v: { postId: string; versionId: string },
+  elementId: string,
+  { parent = null, position = 0 }: { parent?: string | null; position?: number } = {},
+) {
+  await db.insert(versionElements).values({ ...v, elementId, parentElementId: parent, position });
 }
 
 describe("Posts und Versionen", () => {
@@ -114,33 +98,40 @@ describe("Posts und Versionen", () => {
     }));
 });
 
-describe("Layout", () => {
-  it("Grid und Zellen haben positive Größen", () =>
+describe("Elementbaum", () => {
+  it("genau eine Wurzel pro Version", () =>
     withRollback(async (db) => {
       const a = await createPost(db);
-      expect(
-        await expectDbError(db, (tx) =>
-          tx.insert(rows).values({ versionId: a.versionId, position: 0, gridWidth: 0, gridHeight: 1 }),
-        ),
-      ).toBe(CHECK_VIOLATION);
-
-      const { rowId } = await createCell(db, a.versionId);
-      expect(
-        await expectDbError(db, (tx) =>
-          tx.insert(cells).values({ versionId: a.versionId, rowId, position: 1, width: 1, height: 0 }),
-        ),
-      ).toBe(CHECK_VIOLATION);
+      await link(db, a, await createTextElement(db, a.postId));
+      const code = await expectDbError(db, async (tx) => link(tx, a, await createTextElement(tx, a.postId), { position: 1 }));
+      expect(code).toBe(UNIQUE_VIOLATION);
     }));
 
-  it("eine Zelle gehört zu einer Row derselben Version", () =>
+  it("das Elternteil steht in derselben Version", () =>
     withRollback(async (db) => {
       const a = await createPost(db);
       const fork = await createFork(db, a.postId, a.versionId, 2);
-      const { rowId } = await createCell(db, a.versionId);
-      const code = await expectDbError(db, (tx) =>
-        tx.insert(cells).values({ versionId: fork, rowId, position: 1, width: 1, height: 1 }),
+      const parent = await createTextElement(db, a.postId);
+      await link(db, a, parent);
+      const code = await expectDbError(db, async (tx) =>
+        link(tx, { postId: a.postId, versionId: fork }, await createTextElement(tx, a.postId), { parent }),
       );
       expect(code).toBe(FK_VIOLATION);
+    }));
+
+  it("Positionen sind je Elternteil eindeutig; fällt das Elternteil weg, fallen die Kinder mit", () =>
+    withRollback(async (db) => {
+      const a = await createPost(db);
+      const root = await createTextElement(db, a.postId);
+      await link(db, a, root);
+      await link(db, a, await createTextElement(db, a.postId), { parent: root, position: 0 });
+      const code = await expectDbError(db, async (tx) =>
+        link(tx, a, await createTextElement(tx, a.postId), { parent: root, position: 0 }),
+      );
+      expect(code).toBe(UNIQUE_VIOLATION);
+
+      await db.delete(versionElements).where(eq(versionElements.elementId, root));
+      expect(await db.select().from(versionElements).where(eq(versionElements.versionId, a.versionId))).toEqual([]);
     }));
 });
 
@@ -150,24 +141,24 @@ describe("Elemente", () => {
       const a = await createPost(db);
       const fork = await createFork(db, a.postId, a.versionId, 2);
       const element = await createTextElement(db, a.postId);
-      await link(db, { ...a, cellId: (await createCell(db, a.versionId)).cellId }, element);
-      await link(db, { postId: a.postId, versionId: fork, cellId: (await createCell(db, fork)).cellId }, element);
+      await link(db, a, element);
+      await link(db, { postId: a.postId, versionId: fork }, element);
 
       const [{ uses }] = await db
         .select({ uses: count() })
-        .from(cellElements)
-        .where(eq(cellElements.elementId, element));
+        .from(versionElements)
+        .where(eq(versionElements.elementId, element));
       expect(uses).toBe(2);
     }));
 
   it("ein Element kommt pro Version höchstens einmal vor", () =>
     withRollback(async (db) => {
       const a = await createPost(db);
+      const root = await createTextElement(db, a.postId);
       const element = await createTextElement(db, a.postId);
-      const first = await createCell(db, a.versionId, 0);
-      const second = await createCell(db, a.versionId, 1);
-      await link(db, { ...a, cellId: first.cellId }, element);
-      const code = await expectDbError(db, (tx) => link(tx, { ...a, cellId: second.cellId }, element));
+      await link(db, a, root);
+      await link(db, a, element, { parent: root, position: 0 });
+      const code = await expectDbError(db, (tx) => link(tx, a, element, { parent: root, position: 1 }));
       expect(code).toBe(UNIQUE_VIOLATION);
     }));
 
@@ -176,11 +167,10 @@ describe("Elemente", () => {
       const a = await createPost(db);
       const b = await createPost(db);
       const foreign = await createTextElement(db, b.postId);
-      const { cellId } = await createCell(db, a.versionId);
-      // Aufgeschobene Regel (siehe drizzle/0001_*): für den Test sofort prüfen lassen.
+      // Aufgeschobene Regel (siehe drizzle/0008_*): für den Test sofort prüfen lassen.
       const code = await expectDbError(db, async (tx) => {
-        await tx.execute(sql`SET CONSTRAINTS cell_elements_element_fk IMMEDIATE`);
-        await link(tx, { ...a, cellId }, foreign);
+        await tx.execute(sql`SET CONSTRAINTS version_elements_element_fk IMMEDIATE`);
+        await link(tx, a, foreign);
       });
       expect(code).toBe(FK_VIOLATION);
     }));
@@ -189,10 +179,10 @@ describe("Elemente", () => {
     withRollback(async (db) => {
       const a = await createPost(db);
       const element = await createTextElement(db, a.postId);
-      await link(db, { ...a, cellId: (await createCell(db, a.versionId)).cellId }, element);
-      // Aufgeschobene Regel (siehe drizzle/0001_*): für den Test sofort prüfen lassen.
+      await link(db, a, element);
+      // Aufgeschobene Regel (siehe drizzle/0008_*): für den Test sofort prüfen lassen.
       const code = await expectDbError(db, async (tx) => {
-        await tx.execute(sql`SET CONSTRAINTS cell_elements_element_fk IMMEDIATE`);
+        await tx.execute(sql`SET CONSTRAINTS version_elements_element_fk IMMEDIATE`);
         await tx.delete(elements).where(eq(elements.id, element));
       });
       expect(code).toBe(FK_VIOLATION);
@@ -238,13 +228,13 @@ describe("Löschen", () => {
       expect(await db.select().from(versionTags)).toEqual([]);
     }));
 
-  it("ein gelöschter Post nimmt Versionen, Layout und Elemente mit – auch veröffentlicht", () =>
+  it("ein gelöschter Post nimmt Versionen, Elementbaum und Elemente mit – auch veröffentlicht", () =>
     withRollback(async (db) => {
       const a = await createPost(db);
       const fork = await createFork(db, a.postId, a.versionId, 2);
       const element = await createTextElement(db, a.postId);
-      await link(db, { ...a, cellId: (await createCell(db, a.versionId)).cellId }, element);
-      await link(db, { postId: a.postId, versionId: fork, cellId: (await createCell(db, fork)).cellId }, element);
+      await link(db, a, element);
+      await link(db, { postId: a.postId, versionId: fork }, element);
       await db
         .update(posts)
         .set({ publishedVersionId: a.versionId, firstPublishedAt: new Date() })
@@ -252,7 +242,7 @@ describe("Löschen", () => {
 
       await db.delete(posts).where(eq(posts.id, a.postId));
 
-      for (const table of [versions, rows, cells, cellElements, elements]) {
+      for (const table of [versions, versionElements, elements]) {
         const [{ n }] = await db.select({ n: count() }).from(table);
         expect(n).toBe(0);
       }

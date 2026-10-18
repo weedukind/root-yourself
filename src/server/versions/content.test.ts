@@ -1,21 +1,37 @@
 import { eq } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { elements, media, tags, versions } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { flattenElements } from "@/elements/schema";
 import type { PostDetail } from "@/shared/api/posts";
 import {
-  saveVersionInput,
   type ElementInput,
+  type ElementView,
+  MAX_PAGE_ELEMENTS,
+  type PageInput,
+  saveVersionInput,
   type SaveVersionInput,
   type VersionDetail,
 } from "@/shared/api/versions";
 import { createFolder, withRollback } from "../../../test/db";
+import { list, page, slide, text } from "../../../test/elements";
 import { memoryStorage } from "../../../test/memory-storage";
 import { createPost } from "../posts/posts";
 import { getVersion, saveVersion } from "./content";
 import { forkVersion, publishVersion } from "./versions";
 
 const { storage } = memoryStorage();
+
+// previewPath enthält ein Token mit Ablaufzeit aus new Date(). Läuft die Uhr zwischen Speichern
+// und erneutem Laden über eine Zeitgrenze, unterscheiden sich die Tokens – daher Date anhalten
+// (nur Date: Timer braucht der Datenbanktreiber).
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-17T12:00:00Z"));
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 async function newPost(db: Db): Promise<PostDetail> {
   const result = await createPost(db, { title: "Wurzeln" });
@@ -29,40 +45,30 @@ async function load(db: Db, postId: string, versionId: string): Promise<VersionD
   return result.value;
 }
 
+function inputOf(e: ElementView): ElementInput {
+  const { id, type, data } = e;
+  return {
+    id,
+    type,
+    data,
+    ...("mediaId" in e ? { mediaId: e.mediaId } : {}),
+    ...("children" in e ? { children: e.children.map(inputOf) } : {}),
+  } as ElementInput;
+}
+
 /** Eingabe aus einer geladenen Version – so, wie der Editor sie zurückschicken würde. */
 function toInput(version: VersionDetail, patch: Partial<SaveVersionInput> = {}): SaveVersionInput {
   return {
     title: version.title,
     tagIds: version.tags.map((t) => t.id),
-    rows: version.rows.map((row) => ({
-      gridWidth: row.gridWidth,
-      gridHeight: row.gridHeight,
-      cells: row.cells.map((cell) => ({
-        width: cell.width,
-        height: cell.height,
-        elements: cell.elements.map((e): ElementInput =>
-          e.type === "image" ? { id: e.id, type: e.type, data: e.data, mediaId: e.mediaId } : { id: e.id, type: e.type, data: e.data } as ElementInput,
-        ),
-      })),
-    })),
+    root: inputOf(version.root) as PageInput,
     updatedAt: version.updatedAt,
     ...patch,
   };
 }
 
-const text = (markdown: string, id?: string): ElementInput => ({ id, type: "text", data: { markdown } });
-
-/** Eine Row 2×1 mit zwei Zellen: links zwei Texte, rechts einer. */
-const twoColumns = (left: ElementInput[], right: ElementInput[]) => [
-  {
-    gridWidth: 2,
-    gridHeight: 1,
-    cells: [
-      { width: 1, height: 1, elements: left },
-      { width: 1, height: 1, elements: right },
-    ],
-  },
-];
+/** Neue Kinder der Seite; die Seite selbst bleibt dieselbe. */
+const withChildren = (version: VersionDetail, children: ElementInput[]) => page(children, version.root.id);
 
 async function save(db: Db, postId: string, versionId: string, input: SaveVersionInput) {
   const result = await saveVersion(db, storage, postId, versionId, input);
@@ -70,22 +76,39 @@ async function save(db: Db, postId: string, versionId: string, input: SaveVersio
   return result.value;
 }
 
-/** Legt v1 mit Inhalt an und liefert den gespeicherten Stand. */
+/** Legt v1 mit Inhalt an: Seite → [Liste → [Eins, Zwei], Drei]. */
 async function furnished(db: Db) {
   const post = await newPost(db);
   const v1 = await load(db, post.id, post.versions[0].id);
-  const saved = await save(db, post.id, v1.id, toInput(v1, { rows: twoColumns([text("Eins"), text("Zwei")], [text("Drei")]) }));
+  const saved = await save(db, post.id, v1.id, toInput(v1, { root: withChildren(v1, [list([text("Eins"), text("Zwei")]), text("Drei")]) }));
   return { post, v1: saved.version };
 }
 
-const texts = (version: VersionDetail) =>
-  version.rows.map((r) => r.cells.map((c) => c.elements.map((e) => (e.type === "text" ? e.data.markdown : e.type))));
-const idsOf = (version: VersionDetail) => version.rows.flatMap((r) => r.cells.flatMap((c) => c.elements.map((e) => e.id)));
+/** Inhalt der Seite: Texte als Markdown, Container als Liste ihrer Kinder. */
+const tree = (version: VersionDetail) => {
+  const shape = (items: ElementView[]): unknown[] =>
+    items.map((e) => (e.type === "text" ? e.data.markdown : "children" in e ? shape(e.children) : e.type));
+  return shape(version.root.children);
+};
+/** IDs der Texte in Lesereihenfolge. */
+const textIds = (version: VersionDetail) =>
+  flattenElements<ElementView>([version.root])
+    .filter((e) => e.type === "text")
+    .map((e) => e.id);
 const elementCount = async (db: Db, postId: string) =>
   (await db.select({ id: elements.id }).from(elements).where(eq(elements.postId, postId))).length;
 
+describe("createPost", () => {
+  it("Version 1 hat eine leere Seite als Wurzel", () =>
+    withRollback(async (db) => {
+      const post = await newPost(db);
+      const v1 = await load(db, post.id, post.versions[0].id);
+      expect(v1.root).toMatchObject({ type: "page", data: { orientation: "vertical" }, children: [] });
+    }));
+});
+
 describe("saveVersion – unveröffentlichtes Blatt", () => {
-  it("speichert Titel, Tags und Layout", () =>
+  it("speichert Titel, Tags und den Baum", () =>
     withRollback(async (db) => {
       const post = await newPost(db);
       const [tag] = await db.insert(tags).values({ name: "Baum", slug: "baum" }).returning();
@@ -95,11 +118,17 @@ describe("saveVersion – unveröffentlichtes Blatt", () => {
         db,
         post.id,
         v1.id,
-        toInput(v1, { title: "Neuer Titel", tagIds: [tag.id], rows: twoColumns([text("Eins")], []) }),
+        toInput(v1, {
+          title: "Neuer Titel",
+          tagIds: [tag.id],
+          root: withChildren(v1, [list([text("A"), slide([text("B")])], "horizontal"), text("C")]),
+        }),
       );
       expect(forkedFrom).toBeNull();
       expect(version).toMatchObject({ id: v1.id, title: "Neuer Titel", tags: [{ name: "Baum" }] });
-      expect(texts(version)).toEqual([[["Eins"], []]]);
+      expect(tree(version)).toEqual([["A", ["B"]], "C"]);
+      expect(version.root.children[0]).toMatchObject({ type: "list", data: { orientation: "horizontal" } });
+      expect(version.root.id).toBe(v1.root.id);
       expect(version.updatedAt).not.toBe(v1.updatedAt);
       expect(await load(db, post.id, v1.id)).toEqual(version);
     }));
@@ -108,44 +137,54 @@ describe("saveVersion – unveröffentlichtes Blatt", () => {
     withRollback(async (db) => {
       const { post, v1 } = await furnished(db);
       const { version } = await save(db, post.id, v1.id, toInput(v1));
-      expect(idsOf(version)).toEqual(idsOf(v1));
-      expect(await elementCount(db, post.id)).toBe(3);
+      expect(textIds(version)).toEqual(textIds(v1));
+      expect(await elementCount(db, post.id)).toBe(5); // Seite, Liste, drei Texte
     }));
 
-  it("ändert nicht geteilte Elemente direkt – die ID bleibt", () =>
+  it("ändert nicht geteilte Elemente direkt – die ID bleibt; auch ein Typwechsel", () =>
     withRollback(async (db) => {
       const { post, v1 } = await furnished(db);
-      const [one, two, three] = idsOf(v1);
-      const { version } = await save(db, post.id, v1.id, toInput(v1, { rows: twoColumns([text("Eins!", one), text("Zwei", two)], [text("Drei", three)]) }));
-      expect(idsOf(version)).toEqual([one, two, three]);
-      expect(texts(version)).toEqual([[["Eins!", "Zwei"], ["Drei"]]]);
-      expect(await elementCount(db, post.id)).toBe(3);
+      const [one, two, three] = textIds(v1);
+      const listId = v1.root.children[0].id;
+      const { version } = await save(
+        db,
+        post.id,
+        v1.id,
+        toInput(v1, {
+          root: withChildren(v1, [
+            list([text("Eins!", one), text("Zwei", two)], "vertical", listId),
+            { id: three, type: "heading", data: { level: 2, text: "Drei" } },
+          ]),
+        }),
+      );
+      expect(textIds(version)).toEqual([one, two]);
+      expect(tree(version)).toEqual([["Eins!", "Zwei"], "heading"]);
+      expect(version.root.children[1]).toEqual({ id: three, type: "heading", data: { level: 2, text: "Drei" } });
+      expect(await elementCount(db, post.id)).toBe(5);
     }));
 
-  it("erlaubt auch einen Typwechsel im selben Element", () =>
+  it("Umsortieren und Verschieben zwischen Containern erzeugen keine neuen Elemente", () =>
     withRollback(async (db) => {
       const { post, v1 } = await furnished(db);
-      const [one, two, three] = idsOf(v1);
-      const heading: ElementInput = { id: one, type: "heading", data: { level: 2, text: "Überschrift" } };
-      const { version } = await save(db, post.id, v1.id, toInput(v1, { rows: twoColumns([heading, text("Zwei", two)], [text("Drei", three)]) }));
-      expect(version.rows[0].cells[0].elements[0]).toEqual({ id: one, type: "heading", data: { level: 2, text: "Überschrift" } });
+      const [one, two, three] = textIds(v1);
+      const listId = v1.root.children[0].id;
+      const { version } = await save(
+        db,
+        post.id,
+        v1.id,
+        toInput(v1, { root: withChildren(v1, [text("Drei", three), list([text("Eins", one)], "vertical", listId), text("Zwei", two)]) }),
+      );
+      expect(tree(version)).toEqual(["Drei", ["Eins"], "Zwei"]);
+      expect(textIds(version)).toEqual([three, one, two]);
+      expect(await elementCount(db, post.id)).toBe(5);
     }));
 
-  it("Umsortieren und Verschieben zwischen Zellen erzeugen keine neuen Elemente", () =>
+  it("entfernte, nicht geteilte Elemente werden aufgeräumt – ein Container samt Kindern", () =>
     withRollback(async (db) => {
       const { post, v1 } = await furnished(db);
-      const [one, two, three] = idsOf(v1);
-      const { version } = await save(db, post.id, v1.id, toInput(v1, { rows: twoColumns([text("Drei", three)], [text("Zwei", two), text("Eins", one)]) }));
-      expect(idsOf(version)).toEqual([three, two, one]);
-      expect(await elementCount(db, post.id)).toBe(3);
-    }));
-
-  it("entfernte, nicht geteilte Elemente werden aufgeräumt", () =>
-    withRollback(async (db) => {
-      const { post, v1 } = await furnished(db);
-      const [one] = idsOf(v1);
-      await save(db, post.id, v1.id, toInput(v1, { rows: twoColumns([text("Eins", one)], []) }));
-      expect(await elementCount(db, post.id)).toBe(1);
+      const three = textIds(v1)[2];
+      await save(db, post.id, v1.id, toInput(v1, { root: withChildren(v1, [text("Drei", three)]) }));
+      expect(await elementCount(db, post.id)).toBe(2); // Seite und „Drei“
     }));
 
   it("liefert Bild-Elemente mit ihrem Medium", () =>
@@ -157,9 +196,10 @@ describe("saveVersion – unveröffentlichtes Blatt", () => {
         .returning();
       const v1 = await load(db, post.id, post.versions[0].id);
       const { version } = await save(db, post.id, v1.id, toInput(v1, {
-        rows: twoColumns([{ type: "image", data: { caption: "Unterschrift" }, mediaId: image.id }], []),
+        root: withChildren(v1, [list([{ type: "image", data: { caption: "Unterschrift" }, mediaId: image.id }])]),
       }));
-      expect(version.rows[0].cells[0].elements[0]).toMatchObject({
+      const [container] = version.root.children;
+      expect("children" in container && container.children[0]).toMatchObject({
         type: "image",
         data: { caption: "Unterschrift" },
         media: { id: image.id, url: "https://media.example/2026/09/bild.png", width: 40, alt: "Ein Bild" },
@@ -168,24 +208,32 @@ describe("saveVersion – unveröffentlichtes Blatt", () => {
 });
 
 describe("saveVersion – geteilte Elemente (Copy-on-Write)", () => {
-  it("klont ein geändertes geteiltes Element; die Elternversion bleibt unverändert", () =>
+  it("klont ein geändertes geteiltes Element; Container und die übrigen Elemente bleiben geteilt", () =>
     withRollback(async (db) => {
       const { post, v1 } = await furnished(db);
       const forked = await forkVersion(db, post.id, v1.id);
       if (!forked.ok) throw new Error(forked.error.message);
       const v2 = await load(db, post.id, forked.value.id);
-      const [one, two, three] = idsOf(v2);
+      const [one, two, three] = textIds(v2);
+      const listId = v2.root.children[0].id;
 
-      const { version } = await save(db, post.id, v2.id, toInput(v2, { rows: twoColumns([text("Eins in v2", one), text("Zwei", two)], [text("Drei", three)]) }));
-      const [newOne, sharedTwo, sharedThree] = idsOf(version);
+      const { version } = await save(
+        db,
+        post.id,
+        v2.id,
+        toInput(v2, { root: withChildren(v2, [list([text("Eins in v2", one), text("Zwei", two)], "vertical", listId), text("Drei", three)]) }),
+      );
+      const [newOne, sharedTwo, sharedThree] = textIds(version);
       expect(newOne).not.toBe(one);
       expect([sharedTwo, sharedThree]).toEqual([two, three]);
-      expect(texts(await load(db, post.id, v1.id))).toEqual([[["Eins", "Zwei"], ["Drei"]]]);
-      expect(await elementCount(db, post.id)).toBe(4);
+      expect(version.root.id).toBe(v1.root.id);
+      expect(version.root.children[0].id).toBe(listId);
+      expect(tree(await load(db, post.id, v1.id))).toEqual([["Eins", "Zwei"], "Drei"]);
+      expect(await elementCount(db, post.id)).toBe(6);
 
       // Der Klon gehört nur v2 – eine weitere Änderung geht direkt in ihn.
-      const again = await save(db, post.id, v2.id, toInput(version, { rows: twoColumns([text("Eins, zweite Änderung", newOne)], []) }));
-      expect(idsOf(again.version)).toEqual([newOne]);
+      const again = await save(db, post.id, v2.id, toInput(version, { root: withChildren(version, [text("Eins, zweite Änderung", newOne)]) }));
+      expect(textIds(again.version)).toEqual([newOne]);
     }));
 
   it("entfernte geteilte Elemente bleiben für die anderen Versionen erhalten", () =>
@@ -194,9 +242,9 @@ describe("saveVersion – geteilte Elemente (Copy-on-Write)", () => {
       const forked = await forkVersion(db, post.id, v1.id);
       if (!forked.ok) throw new Error(forked.error.message);
       const v2 = await load(db, post.id, forked.value.id);
-      await save(db, post.id, v2.id, toInput(v2, { rows: [] }));
-      expect(await elementCount(db, post.id)).toBe(3);
-      expect(texts(await load(db, post.id, v1.id))).toEqual([[["Eins", "Zwei"], ["Drei"]]]);
+      await save(db, post.id, v2.id, toInput(v2, { root: withChildren(v2, []) }));
+      expect(await elementCount(db, post.id)).toBe(5);
+      expect(tree(await load(db, post.id, v1.id))).toEqual([["Eins", "Zwei"], "Drei"]);
     }));
 });
 
@@ -206,21 +254,23 @@ describe("saveVersion – veröffentlichte und eingefrorene Versionen", () => {
       const { post, v1 } = await furnished(db);
       await publishVersion(db, post.id, v1.id);
       const published = await load(db, post.id, v1.id);
-      const [one, two, three] = idsOf(published);
+      const [one, two, three] = textIds(published);
+      const listId = published.root.children[0].id;
 
       const { version, forkedFrom } = await save(
         db,
         post.id,
         v1.id,
-        toInput(published, { title: "Überarbeitet", rows: twoColumns([text("Eins!", one), text("Zwei", two)], [text("Drei", three)]) }),
+        toInput(published, {
+          title: "Überarbeitet",
+          root: withChildren(published, [list([text("Eins!", one), text("Zwei", two)], "vertical", listId), text("Drei", three)]),
+        }),
       );
       expect(forkedFrom).toBe(v1.id);
       expect(version).toMatchObject({ number: 2, parentVersionId: v1.id, title: "Überarbeitet", isEditable: true });
-      // Geändertes Element geklont, unveränderte geteilt.
-      const [newOne, sharedTwo, sharedThree] = idsOf(version);
+      const [newOne, sharedTwo, sharedThree] = textIds(version);
       expect(newOne).not.toBe(one);
       expect([sharedTwo, sharedThree]).toEqual([two, three]);
-      // Die veröffentlichte Version ist unverändert.
       expect(await load(db, post.id, v1.id)).toEqual({ ...published, isLeaf: false });
     }));
 
@@ -246,18 +296,17 @@ describe("saveVersion – Fehler", () => {
   it("lehnt Elemente anderer Versionen ab, ohne einen Fork übrig zu lassen", () =>
     withRollback(async (db) => {
       const { post, v1 } = await furnished(db);
-      // Geschwister-Version mit eigenem Element.
       const forked = await forkVersion(db, post.id, v1.id);
       if (!forked.ok) throw new Error(forked.error.message);
       const v2 = await load(db, post.id, forked.value.id);
-      const { version: v2saved } = await save(db, post.id, v2.id, toInput(v2, { rows: twoColumns([text("Nur v2")], []) }));
-      const foreignId = idsOf(v2saved)[0];
+      const { version: v2saved } = await save(db, post.id, v2.id, toInput(v2, { root: withChildren(v2, [text("Nur v2")]) }));
+      const foreignId = textIds(v2saved)[0];
 
       const sibling = await forkVersion(db, post.id, v1.id);
       if (!sibling.ok) throw new Error(sibling.error.message);
       await publishVersion(db, post.id, sibling.value.id);
       const v3 = await load(db, post.id, sibling.value.id);
-      const result = await saveVersion(db, storage, post.id, v3.id, toInput(v3, { rows: twoColumns([text("x", foreignId)], []) }));
+      const result = await saveVersion(db, storage, post.id, v3.id, toInput(v3, { root: withChildren(v3, [text("x", foreignId)]) }));
       expect(result).toMatchObject({ ok: false, error: { code: "element_unknown" } });
       expect(await db.select().from(versions).where(eq(versions.postId, post.id))).toHaveLength(3);
     }));
@@ -271,7 +320,7 @@ describe("saveVersion – Fehler", () => {
       expect(
         await saveVersion(db, storage, post.id, v1.id, toInput(v1, {
           title: "X",
-          rows: twoColumns([{ type: "image", data: {}, mediaId: crypto.randomUUID() }], []),
+          root: withChildren(v1, [{ type: "image", data: {}, mediaId: crypto.randomUUID() }]),
         })),
       ).toMatchObject({ ok: false, error: { code: "media_unknown" } });
       expect(await load(db, post.id, v1.id)).toEqual(v1);
@@ -290,30 +339,24 @@ describe("saveVersion – Fehler", () => {
 
 describe("saveVersionInput", () => {
   const base = { title: "T", tagIds: [], updatedAt: new Date().toISOString() };
+  const many = (n: number) => Array.from({ length: n }, () => text("x"));
 
-  it("prüft Zellgrößen gegen das Grid", () => {
-    const result = saveVersionInput.safeParse({
-      ...base,
-      rows: [{ gridWidth: 2, gridHeight: 1, cells: [{ width: 3, height: 1, elements: [] }] }],
-    });
-    expect(result.success).toBe(false);
-    expect(result.error?.issues[0]).toMatchObject({ path: ["rows", 0, "cells", 0, "width"], message: "Zelle ist breiter als das Grid" });
+  it("die Wurzel ist eine Seite; darunter gibt es keine Seite", () => {
+    expect(saveVersionInput.safeParse({ ...base, root: list([]) }).success).toBe(false);
+    expect(saveVersionInput.safeParse({ ...base, root: page([page([]) as unknown as ElementInput]) }).success).toBe(false);
+    expect(saveVersionInput.safeParse({ ...base, root: page([list([slide([text("tief")])])]) }).success).toBe(true);
   });
 
-  it("lehnt Rows ab, deren Zellen nicht ins Grid passen", () => {
-    const cells = (widths: number[]) => widths.map((width) => ({ width, height: 1, elements: [] }));
-    const row = (widths: number[]) => ({ ...base, rows: [{ gridWidth: 3, gridHeight: 2, cells: cells(widths) }] });
-    expect(saveVersionInput.safeParse(row([1, 1, 1, 1, 1, 1])).success).toBe(true);
-    const tooMany = saveVersionInput.safeParse(row([2, 1, 1, 1, 1, 1]));
-    expect(tooMany.error?.issues[0]).toMatchObject({
-      path: ["rows", 0, "cells"],
-      message: "Die Zellen passen nicht in das Grid (2 Zeilen)",
-    });
+  it(`höchstens ${MAX_PAGE_ELEMENTS} Elemente pro Seite, Verschachteltes mitgezählt`, () => {
+    // Seite + Liste + 298 Texte = 300: erlaubt; ein Text mehr: zu viel.
+    expect(saveVersionInput.safeParse({ ...base, root: page([list(many(MAX_PAGE_ELEMENTS - 2))]) }).success).toBe(true);
+    const tooMany = saveVersionInput.safeParse({ ...base, root: page([list(many(MAX_PAGE_ELEMENTS - 1))]) });
+    expect(tooMany.error?.issues[0].message).toBe(`Höchstens ${MAX_PAGE_ELEMENTS} Elemente pro Seite`);
   });
 
-  it("lehnt doppelt verwendete Elemente ab", () => {
+  it("lehnt doppelt verwendete Elemente ab, auch in Containern", () => {
     const id = crypto.randomUUID();
-    const result = saveVersionInput.safeParse({ ...base, rows: twoColumns([text("a", id)], [text("b", id)]) });
-    expect(result.success).toBe(false);
+    const result = saveVersionInput.safeParse({ ...base, root: page([slide([text("a", id)]), text("b", id)]) });
+    expect(result.error?.issues[0].message).toBe("Element doppelt verwendet");
   });
 });

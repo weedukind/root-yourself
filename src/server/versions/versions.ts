@@ -1,5 +1,5 @@
 import { and, eq, max, notExists, sql } from "drizzle-orm";
-import { cellElements, cells, elements, posts, rows, versions, versionTags } from "@/db/schema";
+import { elements, posts, versionElements, versions, versionTags } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { PostDetail, VersionSummary } from "@/shared/api/posts";
 import { getPost } from "../posts/posts";
@@ -38,13 +38,13 @@ export async function deleteOrphanElements(tx: Db, postId: string): Promise<void
     .where(
       and(
         eq(elements.postId, postId),
-        notExists(tx.select({ one: sql`1` }).from(cellElements).where(eq(cellElements.elementId, elements.id))),
+        notExists(tx.select({ one: sql`1` }).from(versionElements).where(eq(versionElements.elementId, elements.id))),
       ),
     );
 }
 
 /**
- * Kopiert Rows, Zellen, Element-Verknüpfungen und Tags von einer Version in eine andere.
+ * Kopiert den Elementbaum (Verknüpfungen) und die Tags von einer Version in eine andere.
  * Die Elemente selbst werden nicht kopiert, sondern geteilt (Copy-on-Write).
  */
 async function copyStructure(tx: Db, from: VersionRow, toVersionId: string): Promise<void> {
@@ -52,44 +52,8 @@ async function copyStructure(tx: Db, from: VersionRow, toVersionId: string): Pro
   if (tagRows.length > 0) {
     await tx.insert(versionTags).values(tagRows.map(({ tagId }) => ({ versionId: toVersionId, tagId })));
   }
-
-  const sourceRows = await tx.select().from(rows).where(eq(rows.versionId, from.id));
-  if (sourceRows.length === 0) return;
-  const newRows = await tx
-    .insert(rows)
-    .values(sourceRows.map(({ position, gridWidth, gridHeight }) => ({ versionId: toVersionId, position, gridWidth, gridHeight })))
-    .returning();
-  const rowIdByPosition = new Map(newRows.map((r) => [r.position, r.id]));
-  const rowId = new Map(sourceRows.map((r) => [r.id, rowIdByPosition.get(r.position)!]));
-
-  const sourceCells = await tx.select().from(cells).where(eq(cells.versionId, from.id));
-  if (sourceCells.length === 0) return;
-  const newCells = await tx
-    .insert(cells)
-    .values(
-      sourceCells.map(({ rowId: oldRowId, position, width, height }) => ({
-        versionId: toVersionId,
-        rowId: rowId.get(oldRowId)!,
-        position,
-        width,
-        height,
-      })),
-    )
-    .returning();
-  const cellIdByKey = new Map(newCells.map((c) => [`${c.rowId}:${c.position}`, c.id]));
-  const cellId = new Map(sourceCells.map((c) => [c.id, cellIdByKey.get(`${rowId.get(c.rowId)}:${c.position}`)!]));
-
-  const links = await tx.select().from(cellElements).where(eq(cellElements.versionId, from.id));
-  if (links.length === 0) return;
-  await tx.insert(cellElements).values(
-    links.map(({ cellId: oldCellId, postId, position, elementId }) => ({
-      cellId: cellId.get(oldCellId)!,
-      versionId: toVersionId,
-      postId,
-      position,
-      elementId,
-    })),
-  );
+  const links = await tx.select().from(versionElements).where(eq(versionElements.versionId, from.id));
+  if (links.length > 0) await tx.insert(versionElements).values(links.map((link) => ({ ...link, versionId: toVersionId })));
 }
 
 /** Forkt eine beliebige Version (auch eingefrorene). Die Quelle wird dadurch zum inneren Knoten. */

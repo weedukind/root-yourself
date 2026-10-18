@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   resolve: {
@@ -10,6 +10,8 @@ export default defineConfig({
     },
   },
   test: {
+    // Browser-Tests laufen mit Playwright (npm run test:e2e).
+    exclude: [...configDefaults.exclude, "e2e/**"],
     globalSetup: ["./test/global-setup.ts"],
     env: {
       PREVIEW_SECRET: "test-secret",

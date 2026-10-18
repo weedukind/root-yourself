@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
-import { cellElements, cells, elements, media, posts, rows, tags, versions, versionTags } from "@/db/schema";
+import { elements, media, posts, tags, versionElements, versions, versionTags } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { excerpt } from "@/lib/excerpt";
 import { byName } from "@/lib/sort";
@@ -30,6 +30,30 @@ export function decodeCursor(value: string): Cursor | null {
   }
 }
 
+type Link = { link: typeof versionElements.$inferSelect; element: typeof elements.$inferSelect; medium: typeof media.$inferSelect | null };
+
+/**
+ * Text- und Bild-Elemente in Lesereihenfolge: der Baum ab der Seite, Tiefe zuerst, Kinder nach
+ * Position. Slides werden übersprungen – Anreißer und Teaser-Bild kommen aus dem Fließtext.
+ */
+function readingOrder(links: Link[]): { versionId: string; element: Link["element"]; medium: Link["medium"] }[] {
+  const children = new Map<string, Link[]>();
+  for (const l of links) {
+    const key = `${l.link.versionId}:${l.link.parentElementId ?? ""}`;
+    children.set(key, [...(children.get(key) ?? []), l]);
+  }
+  const result: ReturnType<typeof readingOrder> = [];
+  const visit = (l: Link) => {
+    if (l.element.type === "slide") return;
+    if (l.element.type === "text" || l.element.type === "image") {
+      result.push({ versionId: l.link.versionId, element: l.element, medium: l.medium });
+    }
+    for (const child of children.get(`${l.link.versionId}:${l.element.id}`) ?? []) visit(child);
+  };
+  for (const l of links) if (!l.link.parentElementId) visit(l);
+  return result;
+}
+
 export async function listTeasers(
   db: Db,
   storage: MediaStorage,
@@ -58,23 +82,21 @@ export async function listTeasers(
   const versionIds = page.map((p) => p.versionId!);
   if (versionIds.length === 0) return { teasers: [], nextCursor: null };
 
-  const [titleRows, tagRows, candidates] = await Promise.all([
+  const [titleRows, tagRows, links] = await Promise.all([
     db.select({ id: versions.id, title: versions.title }).from(versions).where(inArray(versions.id, versionIds)),
     db
       .select({ versionId: versionTags.versionId, id: tags.id, name: tags.name, slug: tags.slug })
       .from(versionTags)
       .innerJoin(tags, eq(tags.id, versionTags.tagId))
       .where(inArray(versionTags.versionId, versionIds)),
-    // Text- und Bild-Elemente in Lesereihenfolge Row → Zelle → Element.
+    // Die Elementbäume der Versionen; ausgewertet in readingOrder.
     db
-      .select({ versionId: cellElements.versionId, element: elements, medium: media })
-      .from(cellElements)
-      .innerJoin(cells, eq(cells.id, cellElements.cellId))
-      .innerJoin(rows, eq(rows.id, cells.rowId))
-      .innerJoin(elements, eq(elements.id, cellElements.elementId))
+      .select({ link: versionElements, element: elements, medium: media })
+      .from(versionElements)
+      .innerJoin(elements, eq(elements.id, versionElements.elementId))
       .leftJoin(media, eq(media.id, elements.mediaId))
-      .where(and(inArray(cellElements.versionId, versionIds), inArray(elements.type, ["text", "image"])))
-      .orderBy(asc(rows.position), asc(cells.position), asc(cellElements.position)),
+      .where(inArray(versionElements.versionId, versionIds))
+      .orderBy(asc(versionElements.position)),
   ]);
 
   const titles = new Map(titleRows.map((t) => [t.id, t.title]));
@@ -83,7 +105,7 @@ export async function listTeasers(
 
   const excerpts = new Map<string, string>();
   const images = new Map<string, MediaRef>();
-  for (const { versionId, element, medium } of candidates) {
+  for (const { versionId, element, medium } of readingOrder(links)) {
     if (element.type === "text" && !excerpts.has(versionId)) {
       const text = excerpt((element.data as { markdown: string }).markdown);
       if (text) excerpts.set(versionId, text);
