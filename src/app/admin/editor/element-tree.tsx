@@ -6,15 +6,16 @@ import { childrenOf, type ElementCandidate, elementLabel, pathKey, type TreePath
 import { summary } from "@/elements/tree";
 import { useDismiss } from "../use-dismiss";
 
-// Baum der Seite zur Navigation: die Wurzel (die Seite), darunter Container und ihre Kinder,
-// beliebig tief. Klick wählt ein Element (die Ansicht scrollt dorthin), Doppelklick bearbeitet
-// es. Das Menü eines Knotens (Rechtsklick oder „⋯“) bietet dieselben Aktionen wie die Knöpfe in
-// der Ansicht (page-editor.tsx, actionsFor). Unvollständige Elemente sind rot markiert.
+// Baum eines Containers im Edit-Modus (edit-dialog.tsx): die Wurzel, darunter ihre Kinder,
+// beliebig tief. Klick wählt ein Element, Doppelklick bearbeitet es. Das Menü eines Knotens
+// (Rechtsklick oder „⋯“) bietet die Aktionen aus actionsFor. Unvollständige Elemente sind rot
+// markiert.
 
-/** Eine Aktion an einem Element – im Menü des Baums und als Knopf in der Ansicht. */
+/** Eine Aktion an einem Element im Menü des Baums. */
 export type ElementAction = { label: string; onSelect: () => void; disabled?: boolean; danger?: boolean; title?: string };
 
-type Menu = { path: TreePath; x: number; y: number };
+/** Offenes Menü; container: wohin es gerendert wird (siehe unten). */
+type Menu = { path: TreePath; x: number; y: number; container: Element };
 
 export function ElementTree({
   root,
@@ -38,9 +39,10 @@ export function ElementTree({
 }) {
   const [menu, setMenu] = useState<Menu | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
+  const ref = useRef<HTMLDivElement>(null);
 
   return (
-    <div>
+    <div ref={ref}>
       <ul>
         <TreeNode
           node={root}
@@ -50,12 +52,17 @@ export function ElementTree({
           problems={problems}
           onSelect={onSelect}
           onEdit={readOnly ? undefined : onEdit}
-          onMenu={readOnly ? undefined : (path, x, y) => setMenu({ path, x, y })}
+          onMenu={readOnly ? undefined : (path, x, y) => setMenu({ path, x, y, container: ref.current?.closest("dialog") ?? document.body })}
           hasMenu={(path) => actionsFor(path).length > 0}
         />
       </ul>
-      {/* In body: Im Baum (sticky, eigene Stapelebene) läge es sonst unter der Leiste mit „Speichern“. */}
-      {menu && createPortal(<NodeMenu x={menu.x} y={menu.y} items={actionsFor(menu.path)} onClose={closeMenu} />, document.body)}
+      {/* Ins Popup bzw. body: Im Baum (eigene Stapelebene, overflow) wäre es sonst verdeckt oder
+          abgeschnitten; außerhalb eines offenen Popups ließe es sich nicht anklicken. */}
+      {menu &&
+        createPortal(
+          <NodeMenu x={menu.x} y={menu.y} items={actionsFor(menu.path)} onClose={closeMenu} />,
+          menu.container,
+        )}
     </div>
   );
 }

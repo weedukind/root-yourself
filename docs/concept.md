@@ -763,18 +763,19 @@ einem Vorschau-Balken (Version, veröffentlicht oder nicht, Gültigkeit).
   auf der obersten Ebene über alle Ordner). Die Bildauswahl im Editor filtert
   nach Ordner.
 - Versions-Editor unter `/admin/posts/[id]/versions/[vid]`:
-  - Oben Titel und Tags. Darunter die **Ansicht** über die ganze Breite; auf
-    Wunsch („Baum einblenden“, der Browser merkt sich die Wahl) links der **Baum
-    der Seite** zur Navigation. In der Ansicht stehen Seite und Inhaltsbereich
-    (eine Liste) je in einem Rahmen; die Liste im View-Modus: wie auf der
+  - Oben Titel und Tags. Darunter die **Ansicht**: Seite und Inhaltsbereich
+    (eine Liste) je in einem Rahmen; die Liste im View-Modus wie auf der
     Website, ihre Kinder im Show-Modus, dazu „Bearbeiten“
-    (`src/app/admin/editor/page-editor.tsx`).
-  - **Bearbeiten** (Knopf, Doppelklick in der Ansicht oder im Baum) öffnet den
-    Edit-Modus im Popup (`src/app/admin/editor/edit-dialog.tsx`): das Formular
-    des Elements; bei Containern (Liste, Slide) darunter ihre Kinder im
-    View-Modus, je in einem Rahmen mit „Bearbeiten“, nach oben/unten und
-    löschen, und „+ Element“ (Typ wählen → Popup; Typen ohne Einstellungen
-    direkt). „Bearbeiten“ an einem Kind ersetzt den Inhalt des Popups durch
+    (`src/app/admin/editor/page-editor.tsx`). Die Seite hat keine Aktionen;
+    Seite und Inhaltsbereich lassen sich weder verschieben noch löschen.
+    Unvollständige Elemente markiert der Rahmen ihres Inhaltsbereichs rot;
+    solange es welche gibt, sind Speichern und Veröffentlichen gesperrt.
+  - **Bearbeiten** (Knopf oder Doppelklick) öffnet den Edit-Modus im Popup
+    (`src/app/admin/editor/edit-dialog.tsx`): jede Eigenschaft in einem Rahmen –
+    die Attribute als Formularfelder, bei Containern (Liste, Slide) darunter
+    „Elemente“: die Kinder im View-Modus, je in einem Rahmen mit Bearbeiten,
+    nach oben/unten und löschen, dazu „Element hinzufügen“ und „Baum
+    einblenden“. „Bearbeiten“ an einem Kind ersetzt den Inhalt des Popups durch
     dessen Edit-Modus, beliebig tief; der Titel zeigt den Pfad im Baum
     („Seite › Liste › Liste › Text“), ein Klick auf eine Stufe geht dorthin
     zurück. Das Popup arbeitet auf einer Kopie des Baums: „Übernehmen“ übernimmt
@@ -784,17 +785,14 @@ einem Vorschau-Balken (Version, veröffentlicht oder nicht, Gültigkeit).
     gesperrt, solange ein Element ein Problem hat, das es im Entwurf noch nicht
     hat (z. B. eine neue, leere Überschrift). Schließen (×, Esc, Klick daneben)
     verwirft nicht übernommene Änderungen.
-  - Ein Klick wählt ein Element; am gewählten Inhaltsbereich erscheinen
-    zusätzlich „+ Element“ und „Einfügen“ nach dem Ausschneiden. Seite und
-    Inhaltsbereich lassen sich weder verschieben noch ausschneiden noch löschen;
-    die Seite selbst hat keine Aktionen. Esc hebt das Ausschneiden auf.
-  - Der Baum (`src/app/admin/editor/element-tree.tsx`) bietet alle Aktionen für
-    jedes Element, auch tief im Baum (bearbeiten, hinzufügen, nach oben/unten,
-    ausschneiden/einfügen, löschen), im Menü eines Knotens (Rechtsklick oder
-    „⋯“); ein Klick wählt das Element und
-    scrollt die Ansicht dorthin. Unvollständige Elemente sind in Baum und Ansicht
-    rot markiert; solange es welche gibt, sind Speichern und Veröffentlichen
-    gesperrt.
+  - Der **Baum** (`src/app/admin/editor/element-tree.tsx`) steht links im
+    Popup, wenn eingeblendet (der Browser merkt sich die Wahl): das Element des
+    Popups mit allen Nachfahren. Ein Klick zeigt den Edit-Modus eines Knotens;
+    sein Menü (Rechtsklick oder „⋯“) bietet bearbeiten, hinzufügen, nach
+    oben/unten, ausschneiden/einfügen (auch in einen anderen Container) und
+    löschen. Esc hebt das Ausschneiden auf. Unvollständige Elemente sind rot.
+  - Die Knöpfe in Rahmen und Popup sind Icons (`src/app/admin/icons.tsx`); ihr
+    Text steht in `aria-label` und Tooltip.
   - Jede übernommene Änderung ändert den Entwurf; gespeichert wird mit der Version.
   - „Vorschau ↗“ zeigt die Seite wie auf der Website (signierter Link,
     gespeicherter Stand); Show und Website teilen

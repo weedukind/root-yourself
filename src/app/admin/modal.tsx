@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef } from "react";
+import { CLOSE_ICON, Icon } from "./icons";
 
 /**
  * Popup (modaler <dialog>), offen solange es eingeblendet ist. Schließen per ×, Escape oder
@@ -61,11 +62,12 @@ export function Modal({
           <button
             type="button"
             aria-label="Schließen"
-            className="rounded px-2 text-xl leading-none text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-30"
+            title="Schließen"
+            className="rounded p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-30"
             disabled={locked}
             onClick={() => ref.current?.close()}
           >
-            ×
+            <Icon d={CLOSE_ICON} />
           </button>
         </div>
         {children}

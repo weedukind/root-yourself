@@ -8,7 +8,7 @@ import { api } from "@/app/admin/api-client";
 import { pathOf } from "@/app/admin/media-folders";
 import { ErrorText, iconButton, inputClass } from "@/app/admin/ui";
 import { type Clipboard, FolderTree } from "./folder-tree";
-import { CUT_ICON, DELETE_ICON, Icon } from "./icons";
+import { CUT_ICON, DELETE_ICON, Icon } from "@/app/admin/icons";
 import { MediaCard } from "./media-card";
 import { Uploader } from "./uploader";
 

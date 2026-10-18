@@ -9,13 +9,12 @@ test("Liste: View wie Show mit Bearbeiten; im Edit-Modus Ausrichtung und Kinder,
   const post = await scratch.post("Editor");
   await page.goto(`/admin/posts/${post.id}/versions/${post.versionId}`);
   const e = editor(page);
-  await e.showTree();
   const dialogs = page.getByRole("dialog");
   const title = e.dialog.getByRole("heading").first();
   /** Im Pfad eine Stufe zurück. */
   const back = () => title.getByRole("button").last().click();
   const addChild = async (type: string, fill: () => Promise<unknown>) => {
-    await e.dialog.getByRole("button", { name: "+ Element" }).click();
+    await e.dialog.getByRole("button", { name: "Element hinzufügen" }).click();
     await page.getByRole("menuitem", { name: type, exact: true }).click();
     await fill();
     await back();
@@ -32,7 +31,7 @@ test("Liste: View wie Show mit Bearbeiten; im Edit-Modus Ausrichtung und Kinder,
   await expect(e.dialog.getByRole("button", { name: "Abbrechen" })).toBeDisabled();
 
   // Kind hinzufügen: dasselbe Popup zeigt seinen Edit-Modus; unvollständig sperrt es „Übernehmen“
-  await e.dialog.getByRole("button", { name: "+ Element" }).click();
+  await e.dialog.getByRole("button", { name: "Element hinzufügen" }).click();
   await page.getByRole("menuitem", { name: "Überschrift", exact: true }).click();
   await expect(dialogs).toHaveCount(1);
   await expect(title).toHaveText(/Liste\s*›\s*Überschrift$/);
@@ -77,7 +76,6 @@ test("Liste: View wie Show mit Bearbeiten; im Edit-Modus Ausrichtung und Kinder,
   // Die View zeigt die Kinder wie auf der Website, ohne eigene Rahmen und Knöpfe
   await expect(e.view.getByRole("heading", { name: "Hallo Welt", level: 3 })).toBeVisible();
   await expect(e.view.getByRole("button", { name: "Bearbeiten" })).toHaveCount(1);
-  await expect(e.labels()).toHaveText([/^Seite/, /^Liste/, /^Text/, /^Überschrift/]);
 
   // Abbrechen stellt den übernommenen Stand wieder her, auch an Kindern; das Popup bleibt offen
   await e.view.getByRole("button", { name: "Bearbeiten" }).click();
@@ -91,7 +89,7 @@ test("Liste: View wie Show mit Bearbeiten; im Edit-Modus Ausrichtung und Kinder,
   await expect(e.dialog.getByLabel("Ausrichtung")).toHaveValue("horizontal");
 
   // Ein neues Kind zählt als Änderung; Abbrechen nimmt es wieder heraus und geht zur Liste zurück
-  await e.dialog.getByRole("button", { name: "+ Element" }).click();
+  await e.dialog.getByRole("button", { name: "Element hinzufügen" }).click();
   await page.getByRole("menuitem", { name: "Text", exact: true }).click();
   await e.dialog.getByRole("button", { name: "Abbrechen" }).click();
   await expect(title).toHaveText(/^Seite\s*›\s*Liste$/);
@@ -111,14 +109,12 @@ test("Seite und Inhaltsbereich (Liste) stehen fest; die Ausrichtung hat die List
   const post = await scratch.post("Wurzel");
   await page.goto(`/admin/posts/${post.id}/versions/${post.versionId}`);
   const e = editor(page);
-  await e.showTree();
 
-  // Die Seite hat keine Aktionen: kein Menü, kein Bearbeiten
-  await e.node(/^Seite/).click({ button: "right" });
-  await expect(page.getByRole("menu")).toHaveCount(0);
-  await expect(e.view.locator('[id="element-"] > div').first().getByRole("button", { name: "Bearbeiten" })).toHaveCount(0);
+  // Die Seite hat keine Einstellungen: nur der Inhaltsbereich hat „Bearbeiten“
+  await expect(e.view.getByRole("button", { name: /bearbeiten/i })).toHaveCount(1);
 
   // Die Liste nimmt Elemente auf, lässt sich aber weder löschen noch verschieben
+  await e.showTree();
   await e.node(/^Liste/).click({ button: "right" });
   await expect(page.getByRole("menuitem", { name: "Liste hinzufügen" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Löschen" })).toHaveCount(0);
@@ -126,26 +122,32 @@ test("Seite und Inhaltsbereich (Liste) stehen fest; die Ausrichtung hat die List
   await expect(page.getByRole("menuitem", { name: "Nach oben" })).toHaveCount(0);
   await expect(page.getByRole("menuitem", { name: "Seite hinzufügen" })).toHaveCount(0);
   await page.keyboard.press("Escape");
-
-  await e.view.locator('[id="element-0"]').getByRole("button", { name: "Bearbeiten" }).click();
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(e.dialog).toBeVisible(); // Escape schließt nur das Menü
   await expect(e.dialog.getByLabel("Ausrichtung")).toHaveValue("vertical");
 });
 
-test("Der Baum ist ausgeblendet, bis man ihn einblendet; ohne Baum nutzt die Ansicht die ganze Breite", async ({ page, scratch }) => {
+test("Baum im Edit-Modus der Liste: ausgeblendet, bis man ihn einblendet; Klick zeigt ein Element", async ({ page, scratch }) => {
   const post = await scratch.post("Baum");
   await page.goto(`/admin/posts/${post.id}/versions/${post.versionId}`);
   const e = editor(page);
-  await expect(e.view).toBeVisible();
   await expect(e.tree).toHaveCount(0);
-  const full = (await e.view.boundingBox())!.width;
+  await e.edit();
+  await expect(e.tree).toHaveCount(0);
 
-  await e.showTree();
-  expect((await e.view.boundingBox())!.width).toBeLessThan(full - 200);
+  // Der Knopf steht im Rahmen der Elemente der Liste
+  await e.dialog.getByRole("region", { name: "Elemente" }).getByRole("button", { name: "Baum einblenden" }).click();
+  await expect(e.tree).toBeVisible();
+  await e.add(/^Liste/, "Text", () => e.dialog.getByRole("textbox", { name: "Text (Markdown)" }).fill("Im Baum"));
+  await e.node(/^Liste/).click();
+  await expect(e.dialog.getByLabel("Ausrichtung")).toBeVisible();
+  await e.node(/^Text/).click();
+  await expect(e.dialog.getByRole("textbox", { name: "Text (Markdown)" })).toHaveValue("Im Baum");
+  await e.close();
 
   // Die Wahl merkt sich der Browser.
-  await page.reload();
+  await e.edit();
   await expect(e.tree).toBeVisible();
-  await page.getByRole("button", { name: "Baum ausblenden" }).click();
+  await e.dialog.getByRole("button", { name: "Baum ausblenden" }).click();
   await expect(e.tree).toHaveCount(0);
-  expect((await e.view.boundingBox())!.width).toBe(full);
 });

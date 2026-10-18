@@ -6,7 +6,7 @@ import { IMAGE_TYPES, MAX_UPLOAD_BYTES, type ImageType, type Media, type MediaFo
 import { api, type ApiResult } from "@/app/admin/api-client";
 import { Modal } from "@/app/admin/modal";
 import { primaryIconButton } from "@/app/admin/ui";
-import { Icon, UPLOAD_ICON } from "./icons";
+import { Icon, UPLOAD_ICON } from "@/app/admin/icons";
 
 const ACCEPT = Object.keys(IMAGE_TYPES).join(",");
 

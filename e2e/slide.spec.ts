@@ -28,7 +28,10 @@ test("Slide befüllen, verschachteln, speichern und als Karussell zeigen", async
   await expect(page.getByRole("menu")).toHaveCount(0);
 
   await e.menu(/^Text Zweite Karte/, "Nach oben");
-  await expect(e.labels()).toHaveText([/^Seite/, /^Liste/, /^Slide/, /^Text/, /^Überschrift/, /^Slide/, /^Bild/]);
+  await expect(e.labels()).toHaveText([/^Liste/, /^Slide/, /^Text/, /^Überschrift/, /^Slide/, /^Bild/]);
+
+  await e.apply();
+  await e.close();
 
   // Die View zeigt die Slide wie auf der Website; bearbeitet wird in einem Popup, das sich
   // durch den Baum bewegt: Liste → Slide → Überschrift und über den Pfad zurück

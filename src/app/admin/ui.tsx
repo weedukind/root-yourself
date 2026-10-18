@@ -9,9 +9,14 @@ export const primaryButton = `${button} bg-zinc-900 text-white hover:bg-zinc-700
 export const secondaryButton = `${button} border border-zinc-300 bg-white hover:bg-zinc-100`;
 export const dangerButton = `${button} bg-red-600 text-white hover:bg-red-500`;
 export const smallButton = `${secondaryButton} px-2 py-0.5 text-xs`;
-const iconButtonBase = "rounded border p-1.5 disabled:opacity-40";
-export const iconButton = `${iconButtonBase} border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100 disabled:hover:bg-white`;
-export const primaryIconButton = `${iconButtonBase} border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-700`;
+const iconButtonBase = "rounded border disabled:opacity-40";
+const iconButtonColors = "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100 disabled:hover:bg-white";
+export const iconButton = `${iconButtonBase} p-1.5 ${iconButtonColors}`;
+export const primaryIconButton = `${iconButtonBase} p-1.5 border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-700 disabled:hover:bg-zinc-900`;
+/** Rahmen um eine Eigenschaft im Edit-Modus: Bezeichnung und Feld (bzw. die Kinder eines Containers). */
+export const propertyFrame = "space-y-2 rounded border border-zinc-300 bg-white p-3";
+/** Kleiner Icon-Knopf, z. B. im Rahmen eines Elements (mit <Icon small />). */
+export const smallIconButton = `${iconButtonBase} p-1 ${iconButtonColors}`;
 
 export function ErrorText({ error }: { error: ApiError | null }) {
   if (!error) return null;

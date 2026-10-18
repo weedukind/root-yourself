@@ -2,13 +2,13 @@
 
 import { useId } from "react";
 import { MediaPicker } from "@/app/admin/editor/media-picker";
-import { inputClass, secondaryButton } from "@/app/admin/ui";
+import { inputClass, propertyFrame, secondaryButton } from "@/app/admin/ui";
 import type { DataAttribute, MediaRefAttribute } from "./attributes";
 import { ELEMENT_SCHEMAS, type ElementCandidate, type MediaRef } from "./schema";
 import type { Attribute } from "./attributes";
 
-// Edit-Modus aller Elemente: pro Attribut das Formular-Element seiner Art, untereinander in der
-// Reihenfolge der Definition. Ein neues Element springt ins erste Textfeld.
+// Edit-Modus aller Elemente: pro Attribut das Formular-Element seiner Art in einem Rahmen,
+// untereinander in der Reihenfolge der Definition. Ein neues Element springt ins erste Textfeld.
 
 export function ElementForm({
   element,
@@ -60,7 +60,7 @@ function Field({
   const common = { id, placeholder: attribute.placeholder, "data-autofocus": autoFocus || undefined };
 
   return (
-    <div className="space-y-1">
+    <div className={propertyFrame}>
       <label htmlFor={id} className="block text-sm font-medium">
         {attribute.label}
       </label>
@@ -109,7 +109,7 @@ function MediaField({
   onPick: (media: MediaRef) => void;
 }) {
   return (
-    <div className="space-y-1">
+    <div className={propertyFrame}>
       <span className="block text-sm font-medium">{attribute.label}</span>
       {media && (
         <div className="flex items-start gap-3">
