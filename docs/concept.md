@@ -774,10 +774,16 @@ einem Vorschau-Balken (Version, veröffentlicht oder nicht, Gültigkeit).
     des Elements; bei Containern (Liste, Slide) darunter ihre Kinder im
     View-Modus, je in einem Rahmen mit „Bearbeiten“, nach oben/unten und
     löschen, und „+ Element“ (Typ wählen → Popup; Typen ohne Einstellungen
-    direkt). „Bearbeiten“ an einem Kind öffnet dessen Edit-Modus in einem
-    weiteren Popup darüber, beliebig tief. „Übernehmen“ übernimmt das Element
-    samt Kindern in das Popup darunter bzw. den Entwurf, „Abbrechen“/Esc/Klick
-    daneben verwerfen; gesperrt, solange etwas nicht zu seiner Definition passt.
+    direkt). „Bearbeiten“ an einem Kind ersetzt den Inhalt des Popups durch
+    dessen Edit-Modus, beliebig tief; der Titel zeigt den Pfad im Baum
+    („Seite › Liste › Liste › Text“), ein Klick auf eine Stufe geht dorthin
+    zurück. Das Popup arbeitet auf einer Kopie des Baums: „Übernehmen“ übernimmt
+    alle Änderungen in den Entwurf, „Abbrechen“ stellt den Stand des Entwurfs
+    wieder her (ein neues Element fällt wieder weg); beide lassen das Popup
+    offen und sind nur aktiv, wenn es Änderungen gibt. „Übernehmen“ ist
+    gesperrt, solange ein Element ein Problem hat, das es im Entwurf noch nicht
+    hat (z. B. eine neue, leere Überschrift). Schließen (×, Esc, Klick daneben)
+    verwirft nicht übernommene Änderungen.
   - Ein Klick wählt ein Element; am gewählten Inhaltsbereich erscheinen
     zusätzlich „+ Element“ und „Einfügen“ nach dem Ausschneiden. Seite und
     Inhaltsbereich lassen sich weder verschieben noch ausschneiden noch löschen;

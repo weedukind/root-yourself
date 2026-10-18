@@ -1,80 +1,107 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ViewElement } from "@/elements/components";
 import { ElementForm } from "@/elements/form";
 import {
   ADDABLE_TYPES,
   childrenOf,
-  completeElement,
-  type DraftElement,
   type ElementCandidate,
   ELEMENT_SCHEMAS,
   elementLabel,
   elementProblems,
   type ElementType,
+  pathKey,
   takesChildren,
+  type TreePath,
 } from "@/elements/schema";
-import { appendChild, moveWithin, removeAt, updateAt } from "@/elements/tree";
+import { appendChild, moveWithin, nodeAt, removeAt, updateAt } from "@/elements/tree";
 import { Modal } from "../modal";
 import { primaryButton, secondaryButton, smallButton } from "../ui";
 import { useDismiss } from "../use-dismiss";
 import { createElement, toView } from "./draft";
 import type { ElementAction } from "./element-tree";
 
-// Edit-Modus eines Elements im Popup: das Formular aus seinen Attributen; bei Containern (Liste,
+// Edit-Modus im Popup: das Formular des Elements aus seinen Attributen; bei Containern (Liste,
 // Slide) darunter die Kinder im View-Modus, je in einem Rahmen mit „Bearbeiten“, ↑, ↓ und ✕, und
-// „+ Element“. „Bearbeiten“ an einem Kind öffnet dessen Edit-Modus in einem weiteren Popup darüber;
-// „Übernehmen“ dort ändert erst den Stand dieses Popups. „Übernehmen“ hier übernimmt das Element
-// samt Kindern und ist gesperrt, solange etwas unvollständig ist.
+// „+ Element“. „Bearbeiten“ an einem Kind ersetzt den Inhalt des Popups durch dessen Edit-Modus;
+// der Titel zeigt den Pfad im Baum, ein Klick auf eine Stufe geht dorthin zurück. Das Popup
+// arbeitet auf einer Kopie des ganzen Baums: „Übernehmen“ übernimmt alle Änderungen in den
+// Entwurf, „Abbrechen“ stellt den Entwurf wieder her; beide lassen das Popup offen und sind nur
+// aktiv, wenn es Änderungen gibt. Schließen (×, Esc, Klick daneben) verwirft nicht übernommene
+// Änderungen. Gesperrt ist „Übernehmen“, solange ein Element ein Problem hat, das es im Entwurf
+// noch nicht hat (z. B. ein neues Bild ohne gewähltes Bild).
 
 export const hasAttributes = (type: ElementType) => Object.keys(ELEMENT_SCHEMAS[type].attributes).length > 0;
 /** Ob ein Element einen Edit-Modus hat: Einstellungen oder Kinder zum Bearbeiten. */
 export const hasEditMode = (type: ElementType) => hasAttributes(type) || takesChildren(type);
 
-// Bearbeiten eines Kinds oder Hinzufügen eines neuen ans Ende.
-type ChildDialog = { mode: "edit"; index: number; element: ElementCandidate } | { mode: "add"; element: ElementCandidate };
+const parsePath = (key: string): TreePath => (key === "" ? [] : key.split(".").map(Number));
+
+/** Probleme eines Baums nach dem key des Elements – stabil auch beim Umsortieren. */
+function problemsByKey(root: ElementCandidate): Map<string, string> {
+  return new Map([...elementProblems(root)].map(([path, problem]) => [nodeAt(root, parsePath(path))!.key, problem]));
+}
+
+/** Der Pfad selbst oder sein nächster Vorfahre, den es im Baum gibt und der einen Edit-Modus hat. */
+function nearestEditable(root: ElementCandidate, path: TreePath): TreePath {
+  for (let depth = path.length; depth > 0; depth--) {
+    const node = nodeAt(root, path.slice(0, depth));
+    if (node && hasEditMode(node.type)) return path.slice(0, depth);
+  }
+  return [];
+}
 
 export function EditDialog({
-  title,
-  initial,
+  saved,
+  initialRoot,
+  initialPath,
   onApply,
   onClose,
 }: {
-  title: string;
-  initial: ElementCandidate;
-  onApply: (element: DraftElement) => void;
+  /** Der Entwurf, wie er gerade ist: Ausgangsstand für „Abbrechen“ und den Vergleich auf Änderungen. */
+  saved: ElementCandidate;
+  /** Der Baum beim Öffnen (bei „hinzufügen“ schon mit dem neuen Element). */
+  initialRoot: ElementCandidate;
+  /** Das Element, dessen Edit-Modus das Popup zuerst zeigt. */
+  initialPath: TreePath;
+  onApply: (root: ElementCandidate) => void;
   onClose: () => void;
 }) {
-  const [element, setElement] = useState(initial);
-  const [child, setChild] = useState<ChildDialog | null>(null);
-  const check = completeElement(element);
+  const [root, setRoot] = useState(initialRoot);
+  const [path, setPath] = useState(initialPath);
+  const element = nodeAt(root, path)!;
   const children = childrenOf(element);
-  const problems = elementProblems(element);
+  const problems = elementProblems(root);
+  const changed = JSON.stringify(root) !== JSON.stringify(saved);
+  const before = problemsByKey(saved);
+  const added = [...problemsByKey(root)].find(([key, problem]) => before.get(key) !== problem);
+  const change = (next: ElementCandidate) => setRoot(updateAt(root, path, () => next));
+  const form = useRef<HTMLFormElement>(null);
 
-  /** Neues Kind: erst im Popup ausfüllen; ohne Einstellungen (z. B. Slide) gleich einfügen. */
+  // Anderes Element: ins erste Textfeld (beim Öffnen macht das schon Modal).
+  useEffect(() => {
+    form.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
+  }, [path]);
+
+  /** Neues Kind: ans Ende; mit Einstellungen gleich in seinen Edit-Modus. */
   function add(type: ElementType) {
-    const created = createElement(type);
-    if (hasAttributes(type)) setChild({ mode: "add", element: created });
-    else setElement(appendChild(element, [], created));
-  }
-
-  function applyChild(next: DraftElement) {
-    if (!child) return;
-    setElement(child.mode === "edit" ? updateAt(element, [child.index], () => next) : appendChild(element, [], next));
-    setChild(null);
+    setRoot(appendChild(root, path, createElement(type)));
+    if (hasAttributes(type)) setPath([...path, children.length]);
   }
 
   return (
-    <Modal title={title} size="xl" onClose={onClose}>
+    <Modal title={<Breadcrumb root={root} path={path} onSelect={setPath} />} size="xl" onClose={onClose}>
       <form
+        ref={form}
         className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
-          if (check.ok) onApply(check.element);
+          if (changed && !added) onApply(root);
         }}
       >
-        <ElementForm element={element} onChange={setElement} />
+        {/* key: Beim Wechsel des Elements beginnt das Formular neu (Fokus aufs erste Feld). */}
+        <ElementForm key={element.key} element={element} onChange={change} />
         {takesChildren(element.type) && (
           <section aria-label="Kinder" className="space-y-2">
             <div className="flex items-center justify-between gap-2">
@@ -85,41 +112,71 @@ export function EditDialog({
             </div>
             {children.length === 0 && <p className="text-sm text-zinc-500 italic">Noch keine Elemente.</p>}
             <div className="prose prose-zinc max-w-none space-y-3">
-              {children.map((node, i) => (
-                <ChildFrame
-                  key={node.key}
-                  node={node}
-                  problem={[...problems].find(([key]) => key === String(i) || key.startsWith(`${i}.`))?.[1]}
-                  first={i === 0}
-                  last={i === children.length - 1}
-                  onEdit={() => setChild({ mode: "edit", index: i, element: node })}
-                  onMove={(delta) => setElement(moveWithin(element, [i], delta))}
-                  onRemove={() => setElement(removeAt(element, [i]))}
-                />
-              ))}
+              {children.map((node, i) => {
+                const childKey = pathKey([...path, i]);
+                return (
+                  <ChildFrame
+                    key={node.key}
+                    node={node}
+                    problem={[...problems].find(([key]) => key === childKey || key.startsWith(`${childKey}.`))?.[1]}
+                    first={i === 0}
+                    last={i === children.length - 1}
+                    onEdit={() => setPath([...path, i])}
+                    onMove={(delta) => setRoot(moveWithin(root, [...path, i], delta))}
+                    onRemove={() => setRoot(removeAt(root, [...path, i]))}
+                  />
+                );
+              })}
             </div>
           </section>
         )}
         <div className="flex flex-wrap items-center gap-2">
-          <button type="submit" className={primaryButton} disabled={!check.ok}>
+          <button type="submit" className={primaryButton} disabled={!changed || Boolean(added)}>
             Übernehmen
           </button>
-          <button type="button" className={secondaryButton} onClick={onClose}>
+          <button
+            type="button"
+            className={secondaryButton}
+            disabled={!changed}
+            onClick={() => {
+              setRoot(saved);
+              setPath(nearestEditable(saved, path));
+            }}
+          >
             Abbrechen
           </button>
-          {!check.ok && <span className="text-sm text-zinc-500">{check.problem}</span>}
+          {added && <span className="text-sm text-zinc-500">{added[1]}</span>}
         </div>
       </form>
-      {/* Außerhalb des Formulars: Formulare dürfen nicht verschachtelt sein. */}
-      {child && (
-        <EditDialog
-          title={`${elementLabel(child.element.type)} ${child.mode === "add" ? "hinzufügen" : "bearbeiten"}`}
-          initial={child.element}
-          onApply={applyChild}
-          onClose={() => setChild(null)}
-        />
-      )}
     </Modal>
+  );
+}
+
+/** Pfad im Baum bis zum bearbeiteten Element; Stufen mit Edit-Modus führen dorthin zurück. */
+function Breadcrumb({ root, path, onSelect }: { root: ElementCandidate; path: TreePath; onSelect: (path: TreePath) => void }) {
+  const steps = [[], ...path.map((_, i) => path.slice(0, i + 1))];
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      {steps.map((step, i) => {
+        const node = nodeAt(root, step)!;
+        const label = elementLabel(node.type);
+        const last = i === steps.length - 1;
+        return (
+          <span key={pathKey(step)} className="flex items-center gap-1">
+            {i > 0 && <span className="text-zinc-400">›</span>}
+            {last || !hasEditMode(node.type) ? (
+              <span aria-current={last ? "location" : undefined} className={last ? "" : "font-normal text-zinc-500"}>
+                {label}
+              </span>
+            ) : (
+              <button type="button" className="font-normal text-zinc-500 underline-offset-2 hover:text-zinc-900 hover:underline" onClick={() => onSelect(step)}>
+                {label}
+              </button>
+            )}
+          </span>
+        );
+      })}
+    </span>
   );
 }
 

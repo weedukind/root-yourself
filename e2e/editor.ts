@@ -32,6 +32,11 @@ export function editor(page: Page) {
       if (!fill) return;
       await fill();
       await dialog.getByRole("button", { name: "Übernehmen" }).click();
+      await this.close();
+    },
+    /** Das Popup schließen (Übernehmen und Abbrechen lassen es offen). */
+    async close() {
+      await dialog.getByRole("button", { name: "Schließen" }).click();
       await expect(page.getByRole("dialog")).toHaveCount(0);
     },
     /** Reihenfolge der Knoten im Baum als Beschriftungen. */

@@ -18,7 +18,7 @@ export function Modal({
   size = "md",
   children,
 }: {
-  title: string;
+  title: React.ReactNode;
   description?: React.ReactNode;
   onClose: () => void;
   locked?: boolean;

@@ -30,17 +30,18 @@ test("Slide befüllen, verschachteln, speichern und als Karussell zeigen", async
   await e.menu(/^Text Zweite Karte/, "Nach oben");
   await expect(e.labels()).toHaveText([/^Seite/, /^Liste/, /^Slide/, /^Text/, /^Überschrift/, /^Slide/, /^Bild/]);
 
-  // Die View zeigt die Slide wie auf der Website; bearbeitet wird über die Popups, verschachtelt:
-  // Liste → Slide → Überschrift
+  // Die View zeigt die Slide wie auf der Website; bearbeitet wird in einem Popup, das sich
+  // durch den Baum bewegt: Liste → Slide → Überschrift und über den Pfad zurück
   await e.view.getByRole("heading", { name: "Erste Karte" }).dblclick();
   await e.dialog.getByRole("button", { name: "Slide bearbeiten" }).first().click();
   await e.dialog.getByRole("button", { name: "Überschrift bearbeiten" }).click();
   await expect(e.dialog.getByRole("textbox", { name: "Überschrift" })).toHaveValue("Erste Karte");
-  await expect(page.getByRole("dialog")).toHaveCount(3);
-  for (const open of [3, 2, 1]) {
-    await e.dialog.getByRole("button", { name: "Abbrechen" }).last().click();
-    await expect(page.getByRole("dialog")).toHaveCount(open - 1);
-  }
+  await expect(page.getByRole("dialog")).toHaveCount(1);
+  const title = e.dialog.getByRole("heading").first();
+  await expect(title).toHaveText(/^Seite\s*›\s*Liste\s*›\s*Slide\s*›\s*Überschrift$/);
+  await title.getByRole("button", { name: "Slide" }).click();
+  await expect(e.dialog.getByRole("button", { name: "Überschrift bearbeiten" })).toBeVisible();
+  await e.close();
 
   await e.save();
   const saved = await (await page.request.get(`/api/admin/posts/${post.id}/versions/${post.versionId}`)).json();

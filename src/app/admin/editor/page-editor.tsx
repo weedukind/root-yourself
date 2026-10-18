@@ -5,7 +5,6 @@ import { ViewElement } from "@/elements/components";
 import {
   ADDABLE_TYPES,
   childrenOf,
-  type DraftElement,
   type ElementCandidate,
   type ElementContent,
   elementLabel,
@@ -14,7 +13,7 @@ import {
   takesChildren,
   type TreePath,
 } from "@/elements/schema";
-import { appendChild, canMoveInto, isFixed, moveInto, moveWithin, nodeAt, removeAt, updateAt } from "@/elements/tree";
+import { appendChild, canMoveInto, isFixed, moveInto, moveWithin, nodeAt, removeAt } from "@/elements/tree";
 import { smallButton } from "../ui";
 import { createElement, toView } from "./draft";
 import { AddMenu, EditDialog, hasAttributes, hasEditMode } from "./edit-dialog";
@@ -48,10 +47,9 @@ function saveTreeVisible(visible: boolean) {
   }
 }
 
-// Bearbeiten eines Elements oder Hinzufügen eines neuen ans Ende eines Containers.
-type Dialog =
-  | { mode: "edit"; path: TreePath; element: ElementCandidate }
-  | { mode: "add"; container: TreePath; element: ElementCandidate };
+// Popup im Edit-Modus: der Baum beim Öffnen (beim Hinzufügen schon mit dem neuen Element) und
+// das Element, das es zuerst zeigt.
+type Dialog = { root: ElementCandidate; path: TreePath };
 
 /** Die Aktionen an einem Element, gruppiert – der Baum zeigt sie als Menü, die Ansicht als Knöpfe. */
 type Actions = {
@@ -95,25 +93,21 @@ export function PageEditor({
   function edit(path: TreePath) {
     const node = nodeAt(root, path);
     setSelected(path);
-    if (node && hasEditMode(node.type)) setDialog({ mode: "edit", path, element: node });
+    if (node && hasEditMode(node.type)) setDialog({ root, path });
   }
 
-  /** Neues Element: erst im Popup ausfüllen; ohne Einstellungen (z. B. Slide) gleich einfügen. */
+  /** Neues Element: erst im Popup ausfüllen (erst „Übernehmen“ fügt es ein); ohne Einstellungen (z. B. Slide) gleich einfügen. */
   function add(container: TreePath, type: ElementType) {
-    const element = createElement(type);
-    if (hasAttributes(type)) return setDialog({ mode: "add", container, element });
-    restructure(appendChild(root, container, element), [...container, childrenOf(nodeAt(root, container)!).length]);
+    const next = appendChild(root, container, createElement(type));
+    const path = [...container, childrenOf(nodeAt(root, container)!).length];
+    if (hasAttributes(type)) return setDialog({ root: next, path });
+    restructure(next, path);
   }
 
-  function apply(element: DraftElement) {
-    if (!dialog) return;
-    if (dialog.mode === "edit") {
-      onChange(updateAt(root, dialog.path, () => element));
-    } else {
-      const index = childrenOf(nodeAt(root, dialog.container)!).length;
-      restructure(appendChild(root, dialog.container, element), [...dialog.container, index]);
-    }
-    setDialog(null);
+  /** „Übernehmen“ im Popup; es bleibt offen. Ein ausgeschnittener Pfad gilt danach nicht mehr. */
+  function apply(next: ElementCandidate) {
+    onChange(next);
+    setCut(null);
   }
 
   function actions(path: TreePath): Actions {
@@ -234,8 +228,9 @@ export function PageEditor({
 
       {dialog && (
         <EditDialog
-          title={`${elementLabel(dialog.element.type)} ${dialog.mode === "add" ? "hinzufügen" : "bearbeiten"}`}
-          initial={dialog.element}
+          saved={root}
+          initialRoot={dialog.root}
+          initialPath={dialog.path}
           onApply={apply}
           onClose={() => setDialog(null)}
         />
